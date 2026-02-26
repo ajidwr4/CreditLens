@@ -26,12 +26,12 @@ export default function ScorePage() {
 
   const [fetchScore, { data, loading }] = useLazyQuery(GET_SCORE);
 
-  function handleLookup(addr?: string) {
-    const target = addr || inputAddress;
-    if (!target) return;
-    setQueryAddress(target);
-    fetchScore({ variables: { address: target.toLowerCase() } });
-  }
+function handleLookup(addr?: string) {
+  const target = (addr || inputAddress).toLowerCase()
+  if (!target) return
+  setQueryAddress(target)
+  fetchScore({ variables: { address: target } })
+}
 
   const score = data?.creditScore;
   const history = data?.scoreHistories?.items || [];
