@@ -1,3 +1,4 @@
+import { eq, and } from "drizzle-orm";
 import { ponder } from "ponder:registry";
 import { bidOrder, askOrder, deal, realWorldRecord, creditScore, scoreHistory } from "ponder:schema";
 import { calculateScore } from "./scorer";
@@ -14,10 +15,9 @@ async function updateBorrowerScore(
 ) {
   // fetch all deals for this borrower
   const allDeals = await db.sql
-    .select()
-    .from(deal)
-    .where(({ eq }: any) => eq(deal.borrower, borrower));
-
+   .select()
+   .from(deal)
+   .where(eq(deal.borrower, borrower));
   const totalLoans  = allDeals.length;
   const repaidOnTime = allDeals.filter((d: any) => d.status === "Repaid" && d.repaidOnTime === true).length;
   const repaidLate   = allDeals.filter((d: any) => d.status === "Repaid" && d.repaidOnTime === false).length;
@@ -25,12 +25,12 @@ async function updateBorrowerScore(
 
   // fetch all real world records for this borrower
   const rwRecords = await db.sql
-    .select()
-    .from(realWorldRecord)
-    .where(({ eq, and }: any) => and(
-      eq(realWorldRecord.borrower, borrower),
-      eq(realWorldRecord.isDeleted, false),
-    ));
+  .select()
+  .from(realWorldRecord)
+  .where(and(
+    eq(realWorldRecord.borrower, borrower),
+    eq(realWorldRecord.isDeleted, false),
+  ));
 
   const totalRealWorldRecords = rwRecords.length;
   const realWorldOnTime = rwRecords.filter((r: any) => r.repaidOnTime === true).length;
