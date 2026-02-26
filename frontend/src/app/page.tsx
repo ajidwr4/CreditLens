@@ -77,14 +77,14 @@ export default function Dashboard() {
           <div className="space-y-3">
             {leaderboard.map((item: any, i: number) => (
               <Link
-                href={`/profile/${item.borrower}`}
-                key={item.borrower}
+                href={`/profile/${item.address}`}
+                key={item.address}
                 className="flex items-center justify-between p-3 rounded-lg hover:bg-gray-800 transition-colors"
               >
                 <div className="flex items-center gap-3">
                   <span className="text-gray-500 text-sm w-6">#{i + 1}</span>
                   <span className="font-mono text-sm text-gray-300">
-                    {shortenAddress(item.borrower)}
+                    {shortenAddress(item.address)}
                   </span>
                   <span
                     className={`px-2 py-0.5 rounded-full border text-xs font-bold ${getTierBg(item.tier)}`}

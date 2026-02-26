@@ -17,8 +17,8 @@ export default function LeaderboardPage() {
         {loading && <p className="text-gray-500 text-sm p-6">Loading...</p>}
         {items.map((item: any, i: number) => (
           <Link
-            href={`/profile/${item.borrower}`}
-            key={item.borrower}
+            href={`/profile/${item.address}`}
+            key={item.address}
             className="flex items-center gap-4 p-4 hover:bg-gray-800/50 transition-colors"
           >
             <span className="text-gray-500 font-mono w-8 text-center">
@@ -27,7 +27,7 @@ export default function LeaderboardPage() {
             <ScoreGauge score={item.totalScore} tier={item.tier} size="sm" />
             <div className="flex-1">
               <p className="font-mono text-sm text-white">
-                {shortenAddress(item.borrower)}
+                {shortenAddress(item.address)}
               </p>
               <span
                 className={`px-2 py-0.5 rounded-full border text-xs font-bold ${getTierBg(item.tier)}`}

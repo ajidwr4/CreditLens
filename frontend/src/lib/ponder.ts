@@ -29,18 +29,14 @@ export const GET_STATS = gql`
 export const GET_SCORE = gql`
   query GetScore($address: String!) {
     creditScore(id: $address) {
-      borrower
+      address
       totalScore
       onChainScore
       realWorldScore
       tier
       lastUpdated
     }
-    scoreHistories(
-      where: { borrower: $address }
-      limit: 20
-      orderBy: "recordedAt"
-    ) {
+    scoreHistories(where: { address: $address }, limit: 20, orderBy: "recordedAt") {
       items {
         totalScore
         onChainScore
@@ -50,7 +46,7 @@ export const GET_SCORE = gql`
       }
     }
   }
-`;
+`
 
 export const GET_MARKET = gql`
   query GetMarket {
@@ -79,11 +75,11 @@ export const GET_LEADERBOARD = gql`
   query GetLeaderboard {
     creditScores(limit: 20, orderBy: "totalScore", orderDirection: "desc") {
       items {
-        borrower
+        address
         totalScore
         tier
         lastUpdated
       }
     }
   }
-`;
+`
