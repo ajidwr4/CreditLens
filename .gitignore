@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+ponder/node_modules/
+
+# Next.js
+frontend/.next/
+frontend/out/
+
+# Environment variables (JANGAN PERNAH PUSH INI)
+.env
+.env.local
+frontend/.env
+frontend/.env.local
+ponder/.env
+
+# Build
+frontend/build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Ponder database
+ponder/ponder.db
+ponder/.ponder/
