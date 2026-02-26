@@ -28,7 +28,7 @@ export const GET_STATS = gql`
 
 export const GET_SCORE = gql`
   query GetScore($address: String!) {
-    creditScore(id: $address) {
+    creditScore(address: $address) {
       address
       totalScore
       onChainScore
