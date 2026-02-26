@@ -1,12 +1,11 @@
 'use client'
 
-import { useState } from 'react'
 import { useAccount, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
+import { useState } from 'react'
 import { REAL_WORLD_CREDIT_ADDRESS, REAL_WORLD_CREDIT_ABI } from '@/lib/contracts'
 
 export default function RWCPage() {
   const { address } = useAccount()
-  const [borrower, setBorrower] = useState('')
   const [issuerName, setIssuerName] = useState('')
   const [amount, setAmount] = useState('')
   const [currency, setCurrency] = useState('USD')
@@ -18,13 +17,13 @@ export default function RWCPage() {
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash })
 
   function handleMint() {
-    if (!address || !borrower || !issuerName || !amount) return
+    if (!address || !issuerName || !amount) return
     writeContract({
       address: REAL_WORLD_CREDIT_ADDRESS,
       abi: REAL_WORLD_CREDIT_ABI,
       functionName: 'mintRecord',
       args: [
-        borrower as `0x${string}`,
+        address,
         issuerName,
         BigInt(amount),
         currency,
@@ -38,7 +37,7 @@ export default function RWCPage() {
   return (
     <div className="max-w-xl mx-auto space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Real World Credit</h1>
+        <h1 className="text-2xl font-bold text-white">Credit Report</h1>
         <p className="text-gray-400 text-sm mt-1">
           Import off-chain credit history on-chain. Records are marked as self-reported.
         </p>
@@ -47,21 +46,22 @@ export default function RWCPage() {
       <div className="bg-gray-900 border border-gray-800 rounded-xl p-6 space-y-4">
         <h3 className="font-semibold text-white">Mint Credit Record</h3>
 
+        {/* Borrower Address — readonly */}
         <div>
           <label className="text-xs text-gray-400">Borrower Address</label>
           <input
-            className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-green-500"
-            placeholder="0x..."
-            value={borrower}
-            onChange={e => setBorrower(e.target.value)}
+            className="w-full mt-1 bg-gray-800/50 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-400 font-mono cursor-not-allowed"
+            value={address ?? 'Connect wallet first'}
+            readOnly
           />
         </div>
 
+        {/* Publisher Name */}
         <div>
-          <label className="text-xs text-gray-400">Issuer Name</label>
+          <label className="text-xs text-gray-400">Publisher Name</label>
           <input
             className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500"
-            placeholder="Koperasi Sejahtera"
+            placeholder="e.g. Publisher Name"
             value={issuerName}
             onChange={e => setIssuerName(e.target.value)}
           />
@@ -79,12 +79,18 @@ export default function RWCPage() {
           </div>
           <div>
             <label className="text-xs text-gray-400">Currency</label>
-            <input
+            <select
               className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500"
-              placeholder="USD"
               value={currency}
               onChange={e => setCurrency(e.target.value)}
-            />
+            >
+              <option value="USD">USD</option>
+              <option value="IDR">IDR</option>
+              <option value="EUR">EUR</option>
+              <option value="SGD">SGD</option>
+              <option value="JPY">JPY</option>
+              <option value="CNY">CNY</option>
+            </select>
           </div>
         </div>
 
@@ -136,7 +142,7 @@ export default function RWCPage() {
 
         <button
           onClick={handleMint}
-          disabled={!address || isPending || isConfirming || !borrower || !issuerName || !amount}
+          disabled={!address || isPending || isConfirming || !issuerName || !amount}
           className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-50 text-black font-semibold py-2.5 rounded-lg transition-colors"
         >
           {!address ? 'Connect Wallet' : isPending ? 'Confirming...' : isConfirming ? 'Processing...' : 'Mint Record'}
