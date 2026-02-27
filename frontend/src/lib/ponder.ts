@@ -1,9 +1,7 @@
 import { ApolloClient, InMemoryCache, gql } from "@apollo/client";
 
 export const ponderClient = new ApolloClient({
-  uri:
-    process.env.NEXT_PUBLIC_PONDER_URL + "/graphql" ||
-    "http://localhost:42069/graphql",
+  uri: '/api/graphql',
   cache: new InMemoryCache(),
 });
 
