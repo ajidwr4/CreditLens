@@ -24,7 +24,10 @@ export default function ScorePage() {
   const [inputAddress, setInputAddress] = useState("");
   const [queryAddress, setQueryAddress] = useState("");
 
-  const [fetchScore, { data, loading }] = useLazyQuery(GET_SCORE);
+  const [fetchScore, { data, loading, error }] = useLazyQuery(GET_SCORE)
+  console.log('data:', data)
+  console.log('error:', error)
+  console.log('loading:', loading)
 
 function handleLookup(addr?: string) {
   const target = (addr || inputAddress).toLowerCase()
@@ -34,7 +37,7 @@ function handleLookup(addr?: string) {
 }
 
   const score = data?.creditScore;
-  const history = data?.scoreHistories?.items || [];
+  const history = data?.scoreHistorys?.items || []
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">

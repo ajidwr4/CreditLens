@@ -34,7 +34,7 @@ export const GET_SCORE = gql`
       tier
       lastUpdated
     }
-    scoreHistories(where: { address: $address }, limit: 20, orderBy: "recordedAt") {
+    scoreHistorys(where: { address: $address }, limit: 20, orderBy: "recordedAt") {
       items {
         totalScore
         onChainScore
