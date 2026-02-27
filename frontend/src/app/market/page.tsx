@@ -29,28 +29,49 @@ export default function MarketPage() {
   const bids = data?.bidOrders?.items || [];
   const asks = data?.askOrders?.items || [];
 
-  async function handlePost() {
-    if (!address || !amount) return;
-    if (postType === "ask") {
-      writeContract({
-        address: LENDING_MARKET_ADDRESS,
-        abi: LENDING_MARKET_ABI,
-        functionName: "postAsk",
-        args: [parseEther(amount)],
-      });
-    } else {
-      writeContract({
-        address: LENDING_MARKET_ADDRESS,
-        abi: LENDING_MARKET_ABI,
-        functionName: "postBid",
-        args: [
-          parseEther(amount),
-          BigInt(Number(interest) * 100),
-          BigInt(Number(duration) * 86400),
-        ],
-      });
-    }
+async function handlePost() {
+  console.log('handlePost called')
+  console.log('address:', address)
+  console.log('amount:', amount)
+  console.log('postType:', postType)
+  
+  if (!address || !amount) {
+    console.log('BLOCKED: no address or amount')
+    return
   }
+  
+  try {
+    if (postType === 'ask') {
+      console.log('Posting ask with args:', {
+        amount: parseEther(amount),
+        currency: 'tCTC',
+        interestRate: 0n,
+        duration: 0n,
+      })
+      writeContract({
+        address: LENDING_MARKET_ADDRESS,
+        abi: LENDING_MARKET_ABI,
+        functionName: 'postAsk',
+        args: [parseEther(amount), 'tCTC', 0n, 0n],
+      })
+    } else {
+      console.log('Posting bid with args:', {
+        amount: parseEther(amount),
+        currency: 'tCTC',
+        interestRate: BigInt(Number(interest) * 100),
+        duration: BigInt(Number(duration) * 86400),
+      })
+      writeContract({
+        address: LENDING_MARKET_ADDRESS,
+        abi: LENDING_MARKET_ABI,
+        functionName: 'postBid',
+        args: [parseEther(amount), 'tCTC', BigInt(Number(interest) * 100), BigInt(Number(duration) * 86400)],
+      })
+    }
+  } catch (err) {
+    console.error('writeContract error:', err)
+  }
+}
 
   return (
     <div className="space-y-6">
