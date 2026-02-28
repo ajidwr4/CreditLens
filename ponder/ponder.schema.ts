@@ -4,42 +4,45 @@ import { onchainTable, index } from "ponder";
 // LENDING MARKET TABLES
 // ═══════════════════════════════════════
 
+// Posted by LENDER — full terms (amount, rate, duration)
 export const bidOrder = onchainTable(
   "bid_order",
   (t) => ({
     id: t.text().primaryKey(),
     orderId: t.bigint().notNull(),
-    borrower: t.hex().notNull(),
+    lender: t.hex().notNull(),          // fixed: was incorrectly named "borrower"
     amount: t.bigint().notNull(),
     currency: t.text().notNull(),
     interestRate: t.bigint().notNull(),
     duration: t.bigint().notNull(),
-    status: t.text().notNull(), // "Open" | "Matched" | "Cancelled"
+    status: t.text().notNull(),         // "Open" | "Matched" | "Cancelled"
     createdAt: t.bigint().notNull(),
   }),
   (table) => ({
-    borrowerIdx: index("bid_borrower_index").on(table.borrower),
+    lenderIdx: index("bid_lender_index").on(table.lender),
   }),
 );
 
+// Posted by BORROWER — amount and currency only, no terms
 export const askOrder = onchainTable(
   "ask_order",
   (t) => ({
     id: t.text().primaryKey(),
     orderId: t.bigint().notNull(),
-    lender: t.hex().notNull(),
+    borrower: t.hex().notNull(),        // fixed: was incorrectly named "lender"
     amount: t.bigint().notNull(),
     currency: t.text().notNull(),
-    interestRate: t.bigint().notNull(),
-    duration: t.bigint().notNull(),
-    status: t.text().notNull(), // "Open" | "Matched" | "Cancelled"
+    // interestRate removed — borrower does not set terms in v2
+    // duration removed    — borrower does not set terms in v2
+    status: t.text().notNull(),         // "Open" | "Matched" | "Cancelled"
     createdAt: t.bigint().notNull(),
   }),
   (table) => ({
-    lenderIdx: index("ask_lender_index").on(table.lender),
+    borrowerIdx: index("ask_borrower_index").on(table.borrower),
   }),
 );
 
+// Formed when lender calls acceptAsk() — terms inherited from Bid
 export const deal = onchainTable(
   "deal",
   (t) => ({
@@ -55,8 +58,9 @@ export const deal = onchainTable(
     duration: t.bigint().notNull(),
     startTime: t.bigint().notNull(),
     deadline: t.bigint().notNull(),
-    status: t.text().notNull(), // "Active" | "Repaid" | "Defaulted"
-    repaidOnTime: t.boolean(), // null until repaid
+    repaymentDue: t.bigint().notNull(), // new in v2 — principal + interest, fixed at match time
+    status: t.text().notNull(),         // "Active" | "Repaid" | "Defaulted"
+    repaidOnTime: t.boolean(),          // null until repaid/defaulted
   }),
   (table) => ({
     borrowerIdx: index("deal_borrower_index").on(table.borrower),
@@ -98,7 +102,7 @@ export const creditScore = onchainTable("credit_score", (t) => ({
   totalScore: t.integer().notNull(),
   onChainScore: t.integer().notNull(),
   realWorldScore: t.integer().notNull(),
-  tier: t.text().notNull(), // "AAA" | "AA" | "A" | "B" | "C"
+  tier: t.text().notNull(),             // "AAA" | "AA" | "A" | "B" | "C"
   totalLoans: t.integer().notNull(),
   repaidOnTime: t.integer().notNull(),
   repaidLate: t.integer().notNull(),
