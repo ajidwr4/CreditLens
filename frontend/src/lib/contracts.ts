@@ -126,6 +126,16 @@ export const LENDING_MARKET_ABI = [
     stateMutability: "nonpayable",
     type: "function",
   },
+  {
+    name: "acceptAsk",
+    type: "function",
+    inputs: [
+      { name: "bidId", type: "uint256" },
+      { name: "askId", type: "uint256" }
+    ],
+    outputs: [],
+    stateMutability: "payable"
+  },
 ] as const;
 
 export const REAL_WORLD_CREDIT_ABI = [

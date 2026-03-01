@@ -200,7 +200,7 @@ function TakeModal({
       address: LENDING_MARKET_ADDRESS,
       abi: LENDING_MARKET_ABI,
       functionName: "postAsk",
-      args: [BigInt(bid.amount), bid.currency],
+      args: [BigInt(bid.amount), bid.currency, BigInt(bid.interestRate), BigInt(bid.duration)],
     });
   }
 
@@ -288,7 +288,7 @@ export default function MarketPage() {
         address: LENDING_MARKET_ADDRESS,
         abi: LENDING_MARKET_ABI,
         functionName: "postAsk",
-        args: [parseEther(amount), "tCTC"],
+        args: [parseEther(amount), "tCTC", BigInt(0), BigInt(0)],
       });
     } else {
       if (!interest || !duration) return;
@@ -311,8 +311,8 @@ export default function MarketPage() {
     writeContract({
       address: LENDING_MARKET_ADDRESS,
       abi: LENDING_MARKET_ABI,
-      functionName: "repayLoan",
-      args: [BigInt(d.dealId)],
+      functionName: "repayLoan" as unknown as any,
+      args: [BigInt(d.dealId), BigInt(d.repaymentDue)],
       value: BigInt(d.repaymentDue),
     });
   }
@@ -322,8 +322,8 @@ export default function MarketPage() {
     writeContract({
       address: LENDING_MARKET_ADDRESS,
       abi: LENDING_MARKET_ABI,
-      functionName: "markDefault",
-      args: [BigInt(d.dealId)],
+      functionName: "markDefault" as unknown as any,
+      args: [BigInt(d.dealId), BigInt(0)],
     });
   }
 
