@@ -339,6 +339,25 @@ export default function MarketPage() {
     });
   }
 
+  // ── Cancel handlers ───────────────────────────────────────
+  async function handleCancelBid(bid: any) {
+    writeContract({
+      address: LENDING_MARKET_ADDRESS,
+      abi: LENDING_MARKET_ABI,
+      functionName: "cancelBid" as unknown as any,
+      args: [BigInt(bid.orderId)],
+    });
+  }
+
+  async function handleCancelAsk(ask: any) {
+    writeContract({
+      address: LENDING_MARKET_ADDRESS,
+      abi: LENDING_MARKET_ABI,
+      functionName: "cancelAsk" as unknown as any,
+      args: [BigInt(ask.orderId)],
+    });
+  }
+
   const nowSecs = Math.floor(Date.now() / 1000);
 
   return (
@@ -425,6 +444,15 @@ export default function MarketPage() {
                                 Take
                               </button>
                             )}
+                            {isOwn && (
+                              <button
+                                onClick={() => handleCancelBid(bid)}
+                                disabled={isPending || isConfirming}
+                                className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
+                              >
+                                Cancel
+                              </button>
+                            )}
                           </td>
                         </tr>
                       );
@@ -472,6 +500,15 @@ export default function MarketPage() {
                                 className="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-400 text-xs font-semibold rounded-lg transition-colors"
                               >
                                 Fund
+                              </button>
+                            )}
+                            {isOwn && (
+                              <button
+                                onClick={() => handleCancelAsk(ask)}
+                                disabled={isPending || isConfirming}
+                                className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
+                              >
+                                Cancel
                               </button>
                             )}
                           </td>
