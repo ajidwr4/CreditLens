@@ -320,14 +320,14 @@ export default function MarketPage() {
 
   // ── Repay handler ─────────────────────────────────────────
   async function handleRepay(d: any) {
-    writeContract({
-      address: LENDING_MARKET_ADDRESS,
-      abi: LENDING_MARKET_ABI,
-      functionName: "repayLoan" as unknown as any,
-      args: [BigInt(d.dealId), BigInt(d.repaymentDue)],
-      value: BigInt(d.repaymentDue),
-    });
-  }
+  writeContract({
+    address: LENDING_MARKET_ADDRESS,
+    abi: LENDING_MARKET_ABI,
+    functionName: "repayLoan",
+    args: [BigInt(d.dealId)],           //  dealId
+    value: BigInt(d.repaymentDue),      // tCTC sen for msg.value
+  });
+}
 
   // ── Mark default handler ──────────────────────────────────
   async function handleDefault(d: any) {
@@ -474,7 +474,7 @@ export default function MarketPage() {
                     <tr className="text-gray-500 text-xs border-b border-gray-800">
                       <th className="text-left px-4 py-3">Borrower</th>
                       <th className="text-right px-4 py-3">Amount</th>
-                      <th className="text-right px-4 py-3">Credit Score</th>
+                      <th className="text-center px-4 py-3">Credit Score</th>
                       <th className="text-right px-4 py-3">Action</th>
                     </tr>
                   </thead>
@@ -490,7 +490,7 @@ export default function MarketPage() {
                           <td className="px-4 py-3 text-right font-bold text-white">
                             {formatAmount(ask.amount)} <span className="text-gray-500 font-normal">tCTC</span>
                           </td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-4 py-3 text-center">
                             <ScoreCell address={ask.borrower} />
                           </td>
                           <td className="px-4 py-3 text-right">

@@ -15,7 +15,7 @@ export default function Dashboard() {
     (acc: number, d: any) => acc + Number(d.amount || 0),
     0,
   );
-  const activeDeals = deals.filter((d: any) => d.status === "ACTIVE").length;
+  const activeDeals = deals.filter((d: any) => d.status === "Active").length;
   const leaderboard = lb?.creditScores?.items || [];
 
   return (
