@@ -283,26 +283,38 @@ export default function MarketPage() {
   async function handlePost() {
     if (!address || !amount) return;
 
+    let parsedAmount: bigint;
+    try {
+      parsedAmount = parseEther(amount);
+      if (parsedAmount <= 0n) return;
+    } catch {
+      return;
+    }
+
     if (postType === "ask") {
       writeContract({
         address: LENDING_MARKET_ADDRESS,
         abi: LENDING_MARKET_ABI,
         functionName: "postAsk",
-        args: [parseEther(amount), "tCTC", BigInt(0), BigInt(0)],
+        args: [parsedAmount, "tCTC"],
       });
     } else {
       if (!interest || !duration) return;
-      writeContract({
-        address: LENDING_MARKET_ADDRESS,
-        abi: LENDING_MARKET_ABI,
-        functionName: "postBid",
-        args: [
-          parseEther(amount),
-          "tCTC",
-          BigInt(Math.round(Number(interest) * 100)),
-          BigInt(Math.round(Number(duration) * 86400)),
-        ],
-      });
+      try {
+        writeContract({
+          address: LENDING_MARKET_ADDRESS,
+          abi: LENDING_MARKET_ABI,
+          functionName: "postBid",
+          args: [
+            parsedAmount,
+            "tCTC",
+            BigInt(Math.round(Number(interest) * 100)),
+            BigInt(Math.round(Number(duration) * 86400)),
+          ],
+        });
+      } catch (err) {
+        console.error("writeContract error:", err);
+      }
     }
   }
 
@@ -583,10 +595,16 @@ export default function MarketPage() {
             <div>
               <label className="text-xs text-gray-400">Amount (tCTC)</label>
               <input
-                className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 transition-colors"
+                type="number"
+                min="0"
+                step="any"
+                className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                 placeholder="100"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "" || /^\d*\.?\d*$/.test(val)) setAmount(val);
+                }}
               />
             </div>
 
@@ -596,19 +614,31 @@ export default function MarketPage() {
                 <div>
                   <label className="text-xs text-gray-400">Interest Rate (% APR)</label>
                   <input
-                    className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 transition-colors"
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     placeholder="5"
                     value={interest}
-                    onChange={(e) => setInterest(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === "" || /^\d*\.?\d*$/.test(val)) setInterest(val);
+                    }}
                   />
                 </div>
                 <div>
                   <label className="text-xs text-gray-400">Duration (days)</label>
                   <input
-                    className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 transition-colors"
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     placeholder="30"
                     value={duration}
-                    onChange={(e) => setDuration(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === "" || /^\d*\.?\d*$/.test(val)) setDuration(val);
+                    }}
                   />
                 </div>
 
