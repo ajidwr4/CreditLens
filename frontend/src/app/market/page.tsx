@@ -200,7 +200,7 @@ function TakeModal({
       address: LENDING_MARKET_ADDRESS,
       abi: LENDING_MARKET_ABI,
       functionName: "postAsk",
-      args: [BigInt(bid.amount), bid.currency, BigInt(bid.interestRate), BigInt(bid.duration)],
+      args: [BigInt(bid.amount), bid.currency],
     });
   }
 
@@ -286,7 +286,7 @@ export default function MarketPage() {
     let parsedAmount: bigint;
     try {
       parsedAmount = parseEther(amount);
-      if (parsedAmount <= 0n) return;
+      if (parsedAmount <= BigInt(0)) return;
     } catch {
       return;
     }
