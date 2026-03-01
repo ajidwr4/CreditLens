@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
-  webpack: (config) => {
+  webpack: (config, { dev }) => {
+    if (dev) {
+      config.cache = false; // matikan cache, hemat memory
+    }
     config.resolve.fallback = {
       ...config.resolve.fallback,
       "@react-native-async-storage/async-storage": false,
