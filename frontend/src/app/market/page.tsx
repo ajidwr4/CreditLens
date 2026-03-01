@@ -69,7 +69,7 @@ function ScoreCell({ address }: { address: string }) {
   if (!score) return <span className="text-gray-500 text-sm">—</span>;
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-center justify-center gap-2">
       <span className="font-bold text-white">{score.totalScore}</span>
       <TierBadge tier={score.tier} />
     </div>
@@ -91,7 +91,9 @@ function FundModal({
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
   useEffect(() => {
-    if (isSuccess) onClose();
+    if (isSuccess) {
+      setTimeout(() => onClose(), 3000);
+    }
   }, [isSuccess]);
 
   const selectedBid = myBids.find((b) => b.orderId === selectedBidId);
@@ -160,12 +162,19 @@ function FundModal({
           </p>
         )}
 
+        {isSuccess && (
+          <p className="text-green-400 text-sm text-center">
+            ✓ Confirmed! Updating in a few seconds...
+          </p>
+        )}
+
         <button
           onClick={handleFund}
           disabled={
             !selectedBid ||
             isPending ||
             isConfirming ||
+            isSuccess ||
             myBids.length === 0 ||
             BigInt(selectedBid?.amount ?? 0) !== BigInt(ask.amount)
           }
@@ -190,7 +199,9 @@ function TakeModal({
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
   useEffect(() => {
-    if (isSuccess) onClose();
+    if (isSuccess) {
+      setTimeout(() => onClose(), 3000);
+    }
   }, [isSuccess]);
 
   // Borrower posts an Ask that matches this Bid, then lender accepts
@@ -236,9 +247,15 @@ function TakeModal({
           This will post a Borrow Request matching this offer. The lender will then fund your request.
         </p>
 
+        {isSuccess && (
+          <p className="text-green-400 text-sm text-center">
+            ✓ Confirmed! Updating in a few seconds...
+          </p>
+        )}
+
         <button
           onClick={handleTake}
-          disabled={isPending || isConfirming}
+          disabled={isPending || isConfirming || isSuccess}
           className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-40 text-black font-bold py-3 rounded-xl transition-colors"
         >
           {isPending ? "Confirm in wallet..." : isConfirming ? "Processing..." : `Request ${formatAmount(bid.amount)} tCTC`}
@@ -268,13 +285,15 @@ export default function MarketPage() {
       setAmount("");
       setInterest("");
       setDuration("");
-      refetch();
+      // Tunggu 3 detik biar Ponder selesai process event
+      setTimeout(() => refetch(), 3000);
     }
   }, [isSuccess]);
 
   const bids  = (data?.bidOrders?.items  ?? []).filter((b: any) => b.status === "Open");
   const asks  = (data?.askOrders?.items  ?? []).filter((a: any) => a.status === "Open");
   const deals = (data?.deals?.items      ?? []);
+  const activeDeals = deals.filter((d: any) => d.status === "Active");
 
   // My open bids (for Fund modal)
   const myBids = bids.filter((b: any) => b.lender?.toLowerCase() === address?.toLowerCase());
@@ -524,8 +543,8 @@ export default function MarketPage() {
           {/* ── Active Deals table ────────────────────── */}
           {tab === "deals" && !loading && (
             <div className="overflow-x-auto">
-              {deals.length === 0 ? (
-                <p className="text-gray-500 text-sm p-6">No deals yet.</p>
+              {activeDeals.length === 0 ? (
+                <p className="text-gray-500 text-sm p-6">No active deals.</p>
               ) : (
                 <table className="w-full text-sm">
                   <thead>
@@ -541,7 +560,7 @@ export default function MarketPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
-                    {deals.map((d: any) => {
+                    {activeDeals.map((d: any) => {
                       const isBorrower = d.borrower?.toLowerCase() === address?.toLowerCase();
                       const isOverdue  = nowSecs > Number(d.deadline) && d.status === "Active";
 
