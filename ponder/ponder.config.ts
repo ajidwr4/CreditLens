@@ -1,27 +1,27 @@
 import { createConfig } from "ponder";
 import { http } from "viem";
-import { LendingMarketABI } from "./abis/LendingMarketABI";
+import { LendingMarketV3ABI } from "./abis/LendingMarketV3ABI";
 import { RealWorldCreditABI } from "./abis/RealWorldCreditABI";
 
 export default createConfig({
-  chains: {
+  networks: {
     creditcoin: {
-      id: 102031,
-      rpc: http(process.env.PONDER_RPC_URL ?? "https://rpc.cc3-testnet.creditcoin.network"),
+      chainId: 102031,
+      transport: http(process.env.PONDER_RPC_URL_102031),
     },
   },
   contracts: {
     LendingMarket: {
-      chain: "creditcoin",
-      abi: LendingMarketABI,
-      address: "0x7c686DBA61c5F5C7C30ae53b6E9D9965b96BB542", // v2 — deployed 28 Feb 2026
-      startBlock: 4345004, 
+      network: "creditcoin",
+      abi: LendingMarketV3ABI,
+      address: "0xDD98f9D3aDC99e07A473bED4E396736d13117128", // v3
+      startBlock: 4360000,
     },
     RealWorldCredit: {
-      chain: "creditcoin",
+      network: "creditcoin",
       abi: RealWorldCreditABI,
       address: "0xB6A2331289F2BeB040eF29bd1932f15Ae4f3771a",
-      startBlock: 4329014,
+      startBlock: 4200000,
     },
   },
 });

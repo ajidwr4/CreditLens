@@ -1,35 +1,34 @@
 import { eq, and } from "drizzle-orm";
 import { ponder } from "ponder:registry";
-import { bidOrder, askOrder, deal, realWorldRecord, creditScore, scoreHistory } from "ponder:schema";
+import {
+  request, offer, publicOffer, loan,
+  realWorldRecord, creditScore, scoreHistory,
+} from "ponder:schema";
 import { calculateScore } from "./scorer";
 import { pushScoreToOracle } from "./pusher";
 
 // ═══════════════════════════════════════
-// HELPER — find primary key id by orderId
+// HELPER — find primary key by domain id
 // ═══════════════════════════════════════
 
-async function findBidId(db: any, orderId: bigint): Promise<string | null> {
-  const records = await db.sql
-    .select()
-    .from(bidOrder)
-    .where(eq(bidOrder.orderId, orderId));
-  return records.length > 0 ? records[0].id : null;
+async function findRequestPk(db: any, requestId: bigint): Promise<string | null> {
+  const rows = await db.sql.select().from(request).where(eq(request.requestId, requestId));
+  return rows[0]?.id ?? null;
 }
 
-async function findAskId(db: any, orderId: bigint): Promise<string | null> {
-  const records = await db.sql
-    .select()
-    .from(askOrder)
-    .where(eq(askOrder.orderId, orderId));
-  return records.length > 0 ? records[0].id : null;
+async function findOfferPk(db: any, offerId: bigint): Promise<string | null> {
+  const rows = await db.sql.select().from(offer).where(eq(offer.offerId, offerId));
+  return rows[0]?.id ?? null;
 }
 
-async function findDealId(db: any, dealId: bigint): Promise<string | null> {
-  const records = await db.sql
-    .select()
-    .from(deal)
-    .where(eq(deal.dealId, dealId));
-  return records.length > 0 ? records[0].id : null;
+async function findPublicOfferPk(db: any, offerId: bigint): Promise<string | null> {
+  const rows = await db.sql.select().from(publicOffer).where(eq(publicOffer.offerId, offerId));
+  return rows[0]?.id ?? null;
+}
+
+async function findLoanPk(db: any, loanId: bigint): Promise<string | null> {
+  const rows = await db.sql.select().from(loan).where(eq(loan.loanId, loanId));
+  return rows[0]?.id ?? null;
 }
 
 // ═══════════════════════════════════════
@@ -41,39 +40,26 @@ async function updateBorrowerScore(
   db: any,
   timestamp: bigint,
 ) {
-  const allDeals = await db.sql
-    .select()
-    .from(deal)
-    .where(eq(deal.borrower, borrower));
+  const allLoans = await db.sql.select().from(loan).where(eq(loan.borrower, borrower));
 
-  const totalLoans   = allDeals.length;
-  const repaidOnTime = allDeals.filter((d: any) => d.status === "Repaid" && d.repaidOnTime === true).length;
-  const repaidLate   = allDeals.filter((d: any) => d.status === "Repaid" && d.repaidOnTime === false).length;
-  const defaulted    = allDeals.filter((d: any) => d.status === "Defaulted").length;
+  const totalLoans    = allLoans.length;
+  const repaidOnTime  = allLoans.filter((l: any) => l.status === "Repaid" && l.repaidOnTime === true).length;
+  const repaidLate    = allLoans.filter((l: any) => l.status === "Repaid" && l.repaidOnTime === false).length;
+  const defaulted     = allLoans.filter((l: any) => l.status === "Defaulted").length;
 
   const rwRecords = await db.sql
     .select()
     .from(realWorldRecord)
-    .where(and(
-      eq(realWorldRecord.borrower, borrower),
-      eq(realWorldRecord.isDeleted, false),
-    ));
+    .where(and(eq(realWorldRecord.borrower, borrower), eq(realWorldRecord.isDeleted, false)));
 
   const totalRealWorldRecords = rwRecords.length;
   const realWorldOnTime       = rwRecords.filter((r: any) => r.repaidOnTime === true).length;
   const realWorldLate         = rwRecords.filter((r: any) => r.repaidOnTime === false).length;
 
-  const input = {
-    totalLoans,
-    repaidOnTime,
-    repaidLate,
-    defaulted,
-    totalRealWorldRecords,
-    realWorldOnTime,
-    realWorldLate,
-  };
-
-  const score = calculateScore(input);
+  const score = calculateScore({
+    totalLoans, repaidOnTime, repaidLate, defaulted,
+    totalRealWorldRecords, realWorldOnTime, realWorldLate,
+  });
 
   await db
     .insert(creditScore)
@@ -113,129 +99,158 @@ async function updateBorrowerScore(
     recordedAt:     timestamp,
   });
 
-  await pushScoreToOracle(borrower, score, input);
+  await pushScoreToOracle(borrower, score, {
+    totalLoans, repaidOnTime, repaidLate, defaulted,
+    totalRealWorldRecords, realWorldOnTime, realWorldLate,
+  });
 }
 
+// ═══════════════════════════════════════
+// MECHANISM A — REQUEST / OFFER
+// ═══════════════════════════════════════
+
+ponder.on("LendingMarket:RequestPosted", async ({ event, context }) => {
+  await context.db.insert(request).values({
+    id:         event.id,
+    requestId:  event.args.requestId,
+    borrower:   event.args.borrower,
+    amount:     event.args.amount,
+    validUntil: event.args.validUntil,
+    status:     "Open",
+    createdAt:  event.block.timestamp,
+  });
+});
+
+ponder.on("LendingMarket:RequestCancelled", async ({ event, context }) => {
+  const id = await findRequestPk(context.db, event.args.requestId);
+  if (!id) { console.warn(`RequestCancelled: requestId ${event.args.requestId} not found`); return; }
+  await context.db.update(request, { id }).set({ status: "Cancelled" });
+});
+
+ponder.on("LendingMarket:RequestExpired", async ({ event, context }) => {
+  const id = await findRequestPk(context.db, event.args.requestId);
+  if (!id) { console.warn(`RequestExpired: requestId ${event.args.requestId} not found`); return; }
+  await context.db.update(request, { id }).set({ status: "Expired" });
+});
+
+ponder.on("LendingMarket:OfferFunded", async ({ event, context }) => {
+  await context.db.insert(offer).values({
+    id:          event.id,
+    offerId:     event.args.offerId,
+    requestId:   event.args.requestId,
+    lender:      event.args.lender,
+    amount:      event.args.amount,
+    aprBps:      event.args.aprBps,
+    durationSecs:event.args.durationSecs,
+    validUntil:  event.args.validUntil,
+    status:      "Open",
+    createdAt:   event.block.timestamp,
+  });
+});
+
+ponder.on("LendingMarket:OfferAccepted", async ({ event, context }) => {
+  const id = await findOfferPk(context.db, event.args.offerId);
+  if (!id) { console.warn(`OfferAccepted: offerId ${event.args.offerId} not found`); return; }
+  await context.db.update(offer, { id }).set({ status: "Accepted" });
+
+  // Also mark the request as Matched
+  const offerRow = await context.db.sql.select().from(offer).where(eq(offer.id, id));
+  if (offerRow[0]) {
+    const reqId = await findRequestPk(context.db, offerRow[0].requestId);
+    if (reqId) await context.db.update(request, { id: reqId }).set({ status: "Matched" });
+  }
+});
+
+ponder.on("LendingMarket:OfferRejected", async ({ event, context }) => {
+  const id = await findOfferPk(context.db, event.args.offerId);
+  if (!id) { console.warn(`OfferRejected: offerId ${event.args.offerId} not found`); return; }
+  await context.db.update(offer, { id }).set({ status: "Rejected" });
+});
+
+ponder.on("LendingMarket:OfferInvalidated", async ({ event, context }) => {
+  const id = await findOfferPk(context.db, event.args.offerId);
+  if (!id) { console.warn(`OfferInvalidated: offerId ${event.args.offerId} not found`); return; }
+  await context.db.update(offer, { id }).set({ status: "Invalidated" });
+});
+
+ponder.on("LendingMarket:OfferExpired", async ({ event, context }) => {
+  const id = await findOfferPk(context.db, event.args.offerId);
+  if (!id) { console.warn(`OfferExpired: offerId ${event.args.offerId} not found`); return; }
+  await context.db.update(offer, { id }).set({ status: "Expired" });
+});
 
 // ═══════════════════════════════════════
-// LENDING MARKET HANDLERS
+// MECHANISM B — PUBLIC OFFER
 // ═══════════════════════════════════════
 
-// Lender posts a bid with full terms
-ponder.on("LendingMarket:BidPosted", async ({ event, context }) => {
-  await context.db.insert(bidOrder).values({
-    id:           event.id,
-    orderId:      event.args.orderId,
-    lender:       event.args.lender,
-    amount:       event.args.amount,
-    currency:     event.args.currency,
-    interestRate: event.args.interestRate,
-    duration:     event.args.duration,
-    status:       "Open",
-    createdAt:    event.block.timestamp,
+ponder.on("LendingMarket:PublicOfferPosted", async ({ event, context }) => {
+  await context.db.insert(publicOffer).values({
+    id:             event.id,
+    offerId:        event.args.offerId,
+    lender:         event.args.lender,
+    amount:         event.args.amount,
+    aprBps:         event.args.aprBps,
+    durationSecs:   event.args.durationSecs,
+    validUntil:     event.args.validUntil,
+    minCreditScore: event.args.minCreditScore,
+    status:         "Open",
+    createdAt:      event.block.timestamp,
   });
 });
 
-// Borrower posts an ask — amount and currency only
-ponder.on("LendingMarket:AskPosted", async ({ event, context }) => {
-  await context.db.insert(askOrder).values({
-    id:        event.id,
-    orderId:   event.args.orderId,
-    borrower:  event.args.borrower,
-    amount:    event.args.amount,
-    currency:  event.args.currency,
-    status:    "Open",
-    createdAt: event.block.timestamp,
+ponder.on("LendingMarket:PublicOfferTaken", async ({ event, context }) => {
+  const id = await findPublicOfferPk(context.db, event.args.offerId);
+  if (!id) { console.warn(`PublicOfferTaken: offerId ${event.args.offerId} not found`); return; }
+  await context.db.update(publicOffer, { id }).set({ status: "Taken" });
+});
+
+ponder.on("LendingMarket:PublicOfferCancelled", async ({ event, context }) => {
+  const id = await findPublicOfferPk(context.db, event.args.offerId);
+  if (!id) { console.warn(`PublicOfferCancelled: offerId ${event.args.offerId} not found`); return; }
+  await context.db.update(publicOffer, { id }).set({ status: "Cancelled" });
+});
+
+ponder.on("LendingMarket:PublicOfferExpired", async ({ event, context }) => {
+  const id = await findPublicOfferPk(context.db, event.args.offerId);
+  if (!id) { console.warn(`PublicOfferExpired: offerId ${event.args.offerId} not found`); return; }
+  await context.db.update(publicOffer, { id }).set({ status: "Expired" });
+});
+
+// ═══════════════════════════════════════
+// MECHANISM C — LOANS
+// ═══════════════════════════════════════
+
+ponder.on("LendingMarket:LoanCreated", async ({ event, context }) => {
+  await context.db.insert(loan).values({
+    id:          event.id,
+    loanId:      event.args.loanId,
+    borrower:    event.args.borrower,
+    lender:      event.args.lender,
+    principal:   event.args.principal,
+    repayDue:    event.args.repayDue,
+    dueTime:     event.args.dueTime,
+    status:      "Active",
+    repaidOnTime:null,
+    createdAt:   event.block.timestamp,
   });
 });
 
-// Lender cancels bid — lookup by orderId first, then update by primary key
-ponder.on("LendingMarket:BidCancelled", async ({ event, context }) => {
-  const id = await findBidId(context.db, event.args.orderId);
-  if (!id) {
-    console.warn(`BidCancelled: bid_order with orderId ${event.args.orderId} not found`);
-    return;
-  }
-  await context.db
-    .update(bidOrder, { id })
-    .set({ status: "Cancelled" });
-});
-
-// Borrower cancels ask — lookup by orderId first, then update by primary key
-ponder.on("LendingMarket:AskCancelled", async ({ event, context }) => {
-  const id = await findAskId(context.db, event.args.orderId);
-  if (!id) {
-    console.warn(`AskCancelled: ask_order with orderId ${event.args.orderId} not found`);
-    return;
-  }
-  await context.db
-    .update(askOrder, { id })
-    .set({ status: "Cancelled" });
-});
-
-// Lender accepts ask — deal formed, terms from bid
-ponder.on("LendingMarket:DealMatched", async ({ event, context }) => {
-  await context.db.insert(deal).values({
-    id:           event.id,
-    dealId:       event.args.dealId,
-    bidId:        event.args.bidId,
-    askId:        event.args.askId,
-    borrower:     event.args.borrower,
-    lender:       event.args.lender,
-    amount:       event.args.amount,
-    currency:     event.args.currency,
-    interestRate: event.args.interestRate,
-    duration:     event.args.duration,
-    startTime:    event.block.timestamp,
-    deadline:     event.args.deadline,
-    repaymentDue: event.args.repaymentDue,
-    status:       "Active",
-    repaidOnTime: null,
-  });
-});
-
-// Borrower repays — lookup by dealId first, then update by primary key
 ponder.on("LendingMarket:LoanRepaid", async ({ event, context }) => {
-  const id = await findDealId(context.db, event.args.dealId);
-  if (!id) {
-    console.warn(`LoanRepaid: deal with dealId ${event.args.dealId} not found`);
-    return;
-  }
-  await context.db
-    .update(deal, { id })
-    .set({
-      status:       "Repaid",
-      repaidOnTime: event.args.onTime,
-    });
-
-  await updateBorrowerScore(
-    event.args.borrower,
-    context.db,
-    event.block.timestamp,
-  );
+  const id = await findLoanPk(context.db, event.args.loanId);
+  if (!id) { console.warn(`LoanRepaid: loanId ${event.args.loanId} not found`); return; }
+  await context.db.update(loan, { id }).set({ status: "Repaid", repaidOnTime: event.args.onTime });
+  await updateBorrowerScore(event.args.borrower, context.db, event.block.timestamp);
 });
 
-// Loan defaulted — lookup by dealId first, then update by primary key
 ponder.on("LendingMarket:LoanDefaulted", async ({ event, context }) => {
-  const id = await findDealId(context.db, event.args.dealId);
-  if (!id) {
-    console.warn(`LoanDefaulted: deal with dealId ${event.args.dealId} not found`);
-    return;
-  }
-  await context.db
-    .update(deal, { id })
-    .set({ status: "Defaulted" });
-
-  await updateBorrowerScore(
-    event.args.borrower,
-    context.db,
-    event.block.timestamp,
-  );
+  const id = await findLoanPk(context.db, event.args.loanId);
+  if (!id) { console.warn(`LoanDefaulted: loanId ${event.args.loanId} not found`); return; }
+  await context.db.update(loan, { id }).set({ status: "Defaulted" });
+  await updateBorrowerScore(event.args.borrower, context.db, event.block.timestamp);
 });
-
 
 // ═══════════════════════════════════════
-// REAL WORLD CREDIT HANDLERS
+// REAL WORLD CREDIT
 // ═══════════════════════════════════════
 
 ponder.on("RealWorldCredit:RecordMinted", async ({ event, context }) => {
@@ -253,29 +268,18 @@ ponder.on("RealWorldCredit:RecordMinted", async ({ event, context }) => {
     mintedAt:     event.args.mintedAt,
     isDeleted:    false,
   });
-
-  await updateBorrowerScore(
-    event.args.borrower,
-    context.db,
-    event.block.timestamp,
-  );
+  await updateBorrowerScore(event.args.borrower, context.db, event.block.timestamp);
 });
 
 ponder.on("RealWorldCredit:RecordDeleted", async ({ event, context }) => {
-  const records = await context.db.sql
+  const rows = await context.db.sql
     .select()
     .from(realWorldRecord)
     .where(eq(realWorldRecord.recordId, event.args.recordId));
 
-  if (records.length > 0) {
-    await context.db
-      .update(realWorldRecord, { id: records[0].id })
-      .set({ isDeleted: true });
+  const row = rows[0];
+  if (row) {
+    await context.db.update(realWorldRecord, { id: row.id }).set({ isDeleted: true });
   }
-
-  await updateBorrowerScore(
-    event.args.borrower,
-    context.db,
-    event.block.timestamp,
-  );
+  await updateBorrowerScore(event.args.borrower, context.db, event.block.timestamp);
 });
