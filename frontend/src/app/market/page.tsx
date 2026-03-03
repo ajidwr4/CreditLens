@@ -2,15 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { useQuery } from "@apollo/client";
-import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, useReadContract } from "wagmi";
 import { parseEther, formatEther } from "viem";
 import { GET_MARKET, GET_CREDIT_SCORE } from "@/lib/ponder";
 import { LENDING_MARKET_ADDRESS, LENDING_MARKET_ABI } from "@/lib/contracts";
 import { shortenAddress } from "@/lib/utils";
-
-// ═══════════════════════════════════════════════════════
-// TIER BADGE
-// ═══════════════════════════════════════════════════════
 
 const TIER_COLOR: Record<string, string> = {
   AAA: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30",
@@ -27,10 +23,6 @@ function TierBadge({ tier }: { tier: string }) {
     </span>
   );
 }
-
-// ═══════════════════════════════════════════════════════
-// FORMAT HELPERS
-// ═══════════════════════════════════════════════════════
 
 function formatAmount(wei: bigint | string): string {
   try {
@@ -58,10 +50,6 @@ function formatDuration(secs: bigint | string): string {
   return `${Math.round(Number(secs) / 86400)}d`;
 }
 
-// ═══════════════════════════════════════════════════════
-// SCORE CELL
-// ═══════════════════════════════════════════════════════
-
 function ScoreCell({ address }: { address: string }) {
   const { data } = useQuery(GET_CREDIT_SCORE, {
     variables: { address: address.toLowerCase() },
@@ -77,17 +65,14 @@ function ScoreCell({ address }: { address: string }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════
-// FUND MODAL — Lender funds a specific Request
-// ═══════════════════════════════════════════════════════
-
+// FIX 1: cap offer validUntil to req.validUntil — contract rejects if offer expiry > request expiry
 function FundModal({ req, onClose }: { req: any; onClose: () => void }) {
   const [aprInput, setAprInput]           = useState("");
   const [durationInput, setDurationInput] = useState("");
   const [validDays, setValidDays]         = useState("7");
 
   const { writeContract, data: txHash, isPending } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+  const { isLoading: isConfirming, isSuccess }     = useWaitForTransactionReceipt({ hash: txHash });
 
   useEffect(() => { if (isSuccess) setTimeout(() => onClose(), 3000); }, [isSuccess]);
 
@@ -101,16 +86,19 @@ function FundModal({ req, onClose }: { req: any; onClose: () => void }) {
 
   async function handleFund() {
     if (!aprInput || !durationInput || !validDays) return;
+    const aprBps       = BigInt(Math.round(parseFloat(aprInput) * 100));
+    const durationSecs = BigInt(Math.round(parseFloat(durationInput) * 86400));
+    const offerValidUntil = BigInt(
+      Math.floor(Date.now() / 1000) + Math.round(parseFloat(validDays) * 86400)
+    );
+    const reqValidUntil = BigInt(req.validUntil);
+    // Cap to request deadline — contract reverts InvalidExpiry if offer > request
+    const validUntil = offerValidUntil < reqValidUntil ? offerValidUntil : reqValidUntil;
     writeContract({
       address: LENDING_MARKET_ADDRESS,
       abi: LENDING_MARKET_ABI,
       functionName: "fundOffer",
-      args: [
-        BigInt(req.requestId),
-        BigInt(Math.round(parseFloat(aprInput) * 100)),
-        BigInt(Math.round(parseFloat(durationInput) * 86400)),
-        BigInt(Math.floor(Date.now() / 1000) + Math.round(parseFloat(validDays) * 86400)),
-      ],
+      args: [BigInt(req.requestId), aprBps, durationSecs, validUntil],
       value: BigInt(req.amount),
     });
   }
@@ -122,7 +110,6 @@ function FundModal({ req, onClose }: { req: any; onClose: () => void }) {
           <h3 className="text-lg font-bold text-white">Fund Borrow Request</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-white text-xl">✕</button>
         </div>
-
         <div className="bg-gray-800 rounded-xl p-4 space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-gray-400">Borrower</span>
@@ -137,40 +124,32 @@ function FundModal({ req, onClose }: { req: any; onClose: () => void }) {
             <ScoreCell address={req.borrower} />
           </div>
         </div>
-
         <div className="space-y-3">
           {[
-            { label: "APR (% per year)", val: aprInput, set: setAprInput, ph: "10" },
-            { label: "Duration (days)",  val: durationInput, set: setDurationInput, ph: "30" },
-            { label: "Offer valid for (days)", val: validDays, set: setValidDays, ph: "7" },
+            { label: "APR (% per year)",      val: aprInput,      set: setAprInput,      ph: "10" },
+            { label: "Duration (days)",        val: durationInput, set: setDurationInput, ph: "30" },
+            { label: "Offer valid for (days)", val: validDays,     set: setValidDays,     ph: "7"  },
           ].map(({ label, val, set, ph }) => (
             <div key={label}>
               <label className="text-xs text-gray-400">{label}</label>
               <input
-                type="number" min="0" step="any" placeholder={ph}
-                value={val}
+                type="number" min="0" step="any" placeholder={ph} value={val}
                 onChange={(e) => { if (e.target.value === "" || /^\d*\.?\d*$/.test(e.target.value)) set(e.target.value); }}
                 className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
             </div>
           ))}
         </div>
-
         {estimatedRepay && (
           <div className="bg-gray-800 rounded-lg p-3 text-xs">
             <p className="text-gray-400">Borrower repays (estimated)</p>
             <p className="text-white font-semibold mt-1">{estimatedRepay.toFixed(4)} tCTC</p>
           </div>
         )}
-
         <p className="text-xs text-gray-500 bg-gray-800 rounded-lg p-3">
-          Your tCTC locks immediately. Borrower must accept before offer expires.
+          Your tCTC locks immediately. Offer expiry is capped to request deadline ({formatDeadline(req.validUntil)}).
         </p>
-
-        {isSuccess && (
-          <p className="text-green-400 text-sm text-center">✓ Offer sent! Waiting for borrower to accept.</p>
-        )}
-
+        {isSuccess && <p className="text-green-400 text-sm text-center">✓ Offer sent! Waiting for borrower to accept.</p>}
         <button
           onClick={handleFund}
           disabled={!aprInput || !durationInput || !validDays || isPending || isConfirming || isSuccess}
@@ -183,13 +162,9 @@ function FundModal({ req, onClose }: { req: any; onClose: () => void }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════
-// TAKE MODAL — Borrower takes a Public Offer
-// ═══════════════════════════════════════════════════════
-
 function TakeModal({ po, onClose }: { po: any; onClose: () => void }) {
   const { writeContract, data: txHash, isPending } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+  const { isLoading: isConfirming, isSuccess }     = useWaitForTransactionReceipt({ hash: txHash });
 
   useEffect(() => { if (isSuccess) setTimeout(() => onClose(), 3000); }, [isSuccess]);
 
@@ -200,15 +175,6 @@ function TakeModal({ po, onClose }: { po: any; onClose: () => void }) {
         (Number(po.durationSecs) / (365 * 86400))
     : 0;
 
-  async function handleTake() {
-    writeContract({
-      address: LENDING_MARKET_ADDRESS,
-      abi: LENDING_MARKET_ABI,
-      functionName: "takeOffer",
-      args: [BigInt(po.offerId)],
-    });
-  }
-
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md space-y-5">
@@ -216,21 +182,18 @@ function TakeModal({ po, onClose }: { po: any; onClose: () => void }) {
           <h3 className="text-lg font-bold text-white">Take Public Offer</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-white text-xl">✕</button>
         </div>
-
         <div className="bg-gray-800 rounded-xl p-4 space-y-2 text-sm">
           {[
-            { label: "Lender",       val: shortenAddress(po.lender), mono: true },
-            { label: "Amount",       val: `${formatAmount(po.amount)} tCTC`, green: true },
-            { label: "APR",          val: formatRate(po.aprBps) },
-            { label: "Duration",     val: formatDuration(po.durationSecs) },
-            { label: "Min Score",    val: po.minCreditScore.toString(), yellow: true },
-            { label: "Offer expires",val: formatDeadline(po.validUntil) },
+            { label: "Lender",        val: shortenAddress(po.lender), mono: true  },
+            { label: "Amount",        val: `${formatAmount(po.amount)} tCTC`, green: true },
+            { label: "APR",           val: formatRate(po.aprBps) },
+            { label: "Duration",      val: formatDuration(po.durationSecs) },
+            { label: "Min Score",     val: po.minCreditScore.toString(), yellow: true },
+            { label: "Offer expires", val: formatDeadline(po.validUntil) },
           ].map(({ label, val, mono, green, yellow }) => (
             <div key={label} className="flex justify-between">
               <span className="text-gray-400">{label}</span>
-              <span className={`${mono ? "font-mono" : ""} ${green ? "font-bold text-green-400" : ""} ${yellow ? "font-semibold text-yellow-400" : "text-white"}`}>
-                {val}
-              </span>
+              <span className={`${mono ? "font-mono" : ""} ${green ? "font-bold text-green-400" : ""} ${yellow ? "font-semibold text-yellow-400" : "text-white"}`}>{val}</span>
             </div>
           ))}
           <div className="flex justify-between border-t border-gray-700 pt-2 mt-1">
@@ -238,17 +201,12 @@ function TakeModal({ po, onClose }: { po: any; onClose: () => void }) {
             <span className="text-yellow-400 font-semibold">{repayEstimate.toFixed(4)} tCTC</span>
           </div>
         </div>
-
         <p className="text-xs text-gray-500 bg-gray-800 rounded-lg p-3">
           First come first served. Your credit score is checked on-chain at this moment.
         </p>
-
-        {isSuccess && (
-          <p className="text-green-400 text-sm text-center">✓ Confirmed! Loan is now active.</p>
-        )}
-
+        {isSuccess && <p className="text-green-400 text-sm text-center">✓ Confirmed! Loan is now active.</p>}
         <button
-          onClick={handleTake}
+          onClick={() => writeContract({ address: LENDING_MARKET_ADDRESS, abi: LENDING_MARKET_ABI, functionName: "takeOffer", args: [BigInt(po.offerId)] })}
           disabled={isPending || isConfirming || isSuccess}
           className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-40 text-black font-bold py-3 rounded-xl transition-colors"
         >
@@ -259,12 +217,8 @@ function TakeModal({ po, onClose }: { po: any; onClose: () => void }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════
-// MAIN PAGE
-// ═══════════════════════════════════════════════════════
-
 type Tab      = "requests" | "public" | "myoffers" | "loans";
-type PostType = "borrow"  | "lend";
+type PostType = "borrow"   | "lend";
 
 export default function MarketPage() {
   const { address } = useAccount();
@@ -272,37 +226,40 @@ export default function MarketPage() {
   const [postType, setPostType]     = useState<PostType>("borrow");
   const [fundTarget, setFundTarget] = useState<any>(null);
   const [takeTarget, setTakeTarget] = useState<any>(null);
+  const [amount, setAmount]         = useState("");
+  const [apr, setApr]               = useState("");
+  const [duration, setDuration]     = useState("");
+  const [validDays, setValidDays]   = useState("7");
+  const [minScore, setMinScore]     = useState("0");
 
-  // Form state
-  const [amount, setAmount]       = useState("");
-  const [apr, setApr]             = useState("");
-  const [duration, setDuration]   = useState("");
-  const [validDays, setValidDays] = useState("7");
-  const [minScore, setMinScore]   = useState("0");
+  const { data, loading, refetch }                 = useQuery(GET_MARKET);
+  const { writeContract, data: txHash, isPending } = useWriteContract();
+  const { isLoading: isConfirming, isSuccess }     = useWaitForTransactionReceipt({ hash: txHash });
 
-  const { data, loading, refetch } = useQuery(GET_MARKET);
-  const { writeContract, data: txHash, isPending }     = useWriteContract();
-  const { isLoading: isConfirming, isSuccess }         = useWaitForTransactionReceipt({ hash: txHash });
+  // FIX 2: read pending refund on-chain — banner only visible when > 0
+  const { data: pendingRefund, refetch: refetchRefund } = useReadContract({
+    address: LENDING_MARKET_ADDRESS,
+    abi: LENDING_MARKET_ABI,
+    functionName: "getPendingRefund",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address },
+  });
 
   useEffect(() => {
     if (isSuccess) {
       setAmount(""); setApr(""); setDuration(""); setValidDays("7"); setMinScore("0");
-      setTimeout(() => refetch(), 3000);
+      setTimeout(() => { refetch(); refetchRefund(); }, 3000);
     }
   }, [isSuccess]);
 
   const nowSecs = Math.floor(Date.now() / 1000);
 
-  // ── Data slices ───────────────────────────────────────
-  const allRequests     = data?.requests?.items      ?? [];
-  const allOffers       = data?.offers?.items         ?? [];
-  const allPublicOffers = data?.publicOffers?.items   ?? [];
-  const allLoans        = data?.loans?.items           ?? [];
-
-  const openRequests     = allRequests.filter((r: any)  => r.status === "Open");
+  const allRequests     = data?.requests?.items     ?? [];
+  const allOffers       = data?.offers?.items        ?? [];
+  const allPublicOffers = data?.publicOffers?.items  ?? [];
+  const allLoans        = data?.loans?.items          ?? [];
+  const openRequests     = allRequests.filter((r: any) => r.status === "Open");
   const openPublicOffers = allPublicOffers.filter((p: any) => p.status === "Open");
-
-  // My Offers inbox — open offers for my open requests only
   const myOpenRequestIds = new Set(
     allRequests
       .filter((r: any) => r.borrower?.toLowerCase() === address?.toLowerCase() && r.status === "Open")
@@ -311,95 +268,79 @@ export default function MarketPage() {
   const myInboxOffers = allOffers.filter(
     (o: any) => o.status === "Open" && myOpenRequestIds.has(o.requestId.toString())
   );
-
   const activeLoans = allLoans.filter((l: any) => l.status === "Active");
 
-  // ── Post handler ──────────────────────────────────────
   async function handlePost() {
     if (!address || !amount || !validDays) return;
     let parsedAmount: bigint;
     try {
       parsedAmount = parseEther(amount);
-      if (parsedAmount <= 0n) return;
+      // FIX 3: BigInt(0) instead of 0n — fixes TS2737 (BigInt literals require ES2020)
+      if (parsedAmount <= BigInt(0)) return;
     } catch { return; }
-
-    const validUntilTs = BigInt(
-      Math.floor(Date.now() / 1000) + Math.round(parseFloat(validDays) * 86400)
-    );
-
+    const validUntilTs = BigInt(Math.floor(Date.now() / 1000) + Math.round(parseFloat(validDays) * 86400));
     if (postType === "borrow") {
-      writeContract({
-        address: LENDING_MARKET_ADDRESS,
-        abi: LENDING_MARKET_ABI,
-        functionName: "postRequest",
-        args: [parsedAmount, validUntilTs],
-      });
+      writeContract({ address: LENDING_MARKET_ADDRESS, abi: LENDING_MARKET_ABI, functionName: "postRequest", args: [parsedAmount, validUntilTs] });
     } else {
       if (!apr || !duration) return;
       writeContract({
-        address: LENDING_MARKET_ADDRESS,
-        abi: LENDING_MARKET_ABI,
-        functionName: "postPublicOffer",
-        args: [
-          parsedAmount,
-          BigInt(Math.round(parseFloat(apr) * 100)),
-          BigInt(Math.round(parseFloat(duration) * 86400)),
-          validUntilTs,
-          BigInt(Math.round(parseFloat(minScore || "0"))),
-        ],
+        address: LENDING_MARKET_ADDRESS, abi: LENDING_MARKET_ABI, functionName: "postPublicOffer",
+        args: [parsedAmount, BigInt(Math.round(parseFloat(apr) * 100)), BigInt(Math.round(parseFloat(duration) * 86400)), validUntilTs, BigInt(Math.round(parseFloat(minScore || "0")))],
         value: parsedAmount,
       });
     }
   }
 
-  // ── Contract action handlers ──────────────────────────
-  const contractCall = (functionName: string, args: any[], value?: bigint) =>
-    writeContract({ address: LENDING_MARKET_ADDRESS, abi: LENDING_MARKET_ABI, functionName: functionName as any, args, ...(value ? { value } : {}) });
+  // FIX 4: inline writeContract per function — fixes TS2322 (args type mismatch from contractCall helper)
+  function handleRepay(loan: any) {
+    writeContract({ address: LENDING_MARKET_ADDRESS, abi: LENDING_MARKET_ABI, functionName: "repay", args: [BigInt(loan.loanId)], value: BigInt(loan.repayDue) });
+  }
+  function handleDefault(loan: any) {
+    writeContract({ address: LENDING_MARKET_ADDRESS, abi: LENDING_MARKET_ABI, functionName: "markDefault", args: [BigInt(loan.loanId)] });
+  }
+  function handleCancelRequest(req: any) {
+    writeContract({ address: LENDING_MARKET_ADDRESS, abi: LENDING_MARKET_ABI, functionName: "cancelRequest", args: [BigInt(req.requestId)] });
+  }
+  function handleCancelPubOffer(po: any) {
+    writeContract({ address: LENDING_MARKET_ADDRESS, abi: LENDING_MARKET_ABI, functionName: "cancelPublicOffer", args: [BigInt(po.offerId)] });
+  }
+  function handleAcceptOffer(offer: any) {
+    writeContract({ address: LENDING_MARKET_ADDRESS, abi: LENDING_MARKET_ABI, functionName: "acceptOffer", args: [BigInt(offer.offerId)] });
+  }
+  function handleRejectOffer(offer: any) {
+    writeContract({ address: LENDING_MARKET_ADDRESS, abi: LENDING_MARKET_ABI, functionName: "rejectOffer", args: [BigInt(offer.offerId)] });
+  }
+  function handleWithdrawRefund() {
+    writeContract({ address: LENDING_MARKET_ADDRESS, abi: LENDING_MARKET_ABI, functionName: "withdrawRefund", args: [] });
+  }
 
-  const handleRepay          = (loan: any)   => contractCall("repay",            [BigInt(loan.loanId)],   BigInt(loan.repayDue));
-  const handleDefault        = (loan: any)   => contractCall("markDefault",       [BigInt(loan.loanId)]);
-  const handleCancelRequest  = (req: any)    => contractCall("cancelRequest",     [BigInt(req.requestId)]);
-  const handleCancelPubOffer = (po: any)     => contractCall("cancelPublicOffer", [BigInt(po.offerId)]);
-  const handleAcceptOffer    = (offer: any)  => contractCall("acceptOffer",       [BigInt(offer.offerId)]);
-  const handleRejectOffer    = (offer: any)  => contractCall("rejectOffer",       [BigInt(offer.offerId)]);
-  const handleWithdrawRefund = ()            => contractCall("withdrawRefund",    []);
+  const repayPreview = amount && apr && duration
+    ? (parseFloat(amount) + parseFloat(amount) * (parseFloat(apr) / 100) * (parseFloat(duration) / 365)).toFixed(4)
+    : null;
 
-  // ── Repay preview ─────────────────────────────────────
-  const repayPreview =
-    amount && apr && duration
-      ? (
-          parseFloat(amount) +
-          parseFloat(amount) * (parseFloat(apr) / 100) * (parseFloat(duration) / 365)
-        ).toFixed(4)
-      : null;
-
-  // ── Tab config ────────────────────────────────────────
   const tabs: { key: Tab; label: string }[] = [
-    { key: "requests", label: `Requests (${openRequests.length})`              },
-    { key: "public",   label: `Public Offers (${openPublicOffers.length})`     },
-    { key: "myoffers", label: `My Offers (${myInboxOffers.length})`            },
-    { key: "loans",    label: `Active Loans (${activeLoans.length})`           },
+    { key: "requests", label: `Requests (${openRequests.length})`          },
+    { key: "public",   label: `Public Offers (${openPublicOffers.length})` },
+    { key: "myoffers", label: `My Offers (${myInboxOffers.length})`        },
+    { key: "loans",    label: `Active Loans (${activeLoans.length})`       },
   ];
+
+  const hasPendingRefund = pendingRefund !== undefined && pendingRefund > BigInt(0);
 
   return (
     <div className="space-y-6">
-      {/* Modals */}
-      {fundTarget && (
-        <FundModal req={fundTarget} onClose={() => { setFundTarget(null); setTimeout(() => refetch(), 3000); }} />
-      )}
-      {takeTarget && (
-        <TakeModal po={takeTarget} onClose={() => { setTakeTarget(null); setTimeout(() => refetch(), 3000); }} />
-      )}
+      {fundTarget && <FundModal req={fundTarget} onClose={() => { setFundTarget(null); setTimeout(() => refetch(), 3000); }} />}
+      {takeTarget && <TakeModal po={takeTarget}  onClose={() => { setTakeTarget(null); setTimeout(() => refetch(), 3000); }} />}
 
       <h1 className="text-2xl font-bold text-white">Lending Market</h1>
 
-      {/* Pending Refund Banner */}
-      {address && (
+      {/* Pending Refund Banner — only shown when pendingRefund > 0 */}
+      {address && hasPendingRefund && (
         <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 flex items-center justify-between gap-4">
           <div>
-            <p className="text-yellow-400 text-sm font-semibold">Pending Refunds</p>
-            <p className="text-gray-400 text-xs mt-0.5">
-              You may have unclaimed tCTC from rejected or expired offers.
+            <p className="text-yellow-400 text-sm font-semibold">Pending Refund</p>
+            <p className="text-white text-sm font-bold mt-0.5">
+              {formatAmount(pendingRefund!.toString())} tCTC available to withdraw
             </p>
           </div>
           <button
@@ -407,28 +348,17 @@ export default function MarketPage() {
             disabled={isPending || isConfirming}
             className="shrink-0 px-4 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/30 text-yellow-400 text-sm font-semibold rounded-lg transition-colors disabled:opacity-40"
           >
-            Withdraw
+            {isPending ? "Confirming..." : "Withdraw"}
           </button>
         </div>
       )}
 
       <div className="grid md:grid-cols-3 gap-6">
-
-        {/* ── Market Tables ─────────────────────────────── */}
         <div className="md:col-span-2 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-
-          {/* Tabs */}
           <div className="flex border-b border-gray-800 overflow-x-auto">
             {tabs.map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => setTab(key)}
-                className={`flex-1 min-w-fit px-3 py-3 text-xs font-semibold whitespace-nowrap transition-colors ${
-                  tab === key
-                    ? "text-white border-b-2 border-green-500"
-                    : "text-gray-500 hover:text-gray-300"
-                }`}
-              >
+              <button key={key} onClick={() => setTab(key)}
+                className={`flex-1 min-w-fit px-3 py-3 text-xs font-semibold whitespace-nowrap transition-colors ${tab === key ? "text-white border-b-2 border-green-500" : "text-gray-500 hover:text-gray-300"}`}>
                 {label}
               </button>
             ))}
@@ -436,12 +366,10 @@ export default function MarketPage() {
 
           {loading && <p className="text-gray-500 text-sm p-6">Loading...</p>}
 
-          {/* ── Requests Tab ──────────────────────────── */}
+          {/* ── Requests Tab ─────────────────────────── */}
           {tab === "requests" && !loading && (
             <div className="overflow-x-auto">
-              {openRequests.length === 0 ? (
-                <p className="text-gray-500 text-sm p-6">No open borrow requests.</p>
-              ) : (
+              {openRequests.length === 0 ? <p className="text-gray-500 text-sm p-6">No open borrow requests.</p> : (
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-gray-500 text-xs border-b border-gray-800">
@@ -456,51 +384,27 @@ export default function MarketPage() {
                   <tbody className="divide-y divide-gray-800">
                     {openRequests.map((req: any) => {
                       const isOwn = req.borrower?.toLowerCase() === address?.toLowerCase();
-                      const offerCount = allOffers.filter(
-                        (o: any) => o.requestId.toString() === req.requestId.toString() && o.status === "Open"
-                      ).length;
+                      const offerCount = allOffers.filter((o: any) => o.requestId.toString() === req.requestId.toString() && o.status === "Open").length;
                       return (
                         <tr key={req.id} className="hover:bg-gray-800/40 transition-colors">
                           <td className="px-4 py-3 font-mono text-gray-300">
                             {shortenAddress(req.borrower)}
                             {isOwn && <span className="ml-2 text-xs text-green-400">(you)</span>}
                           </td>
-                          <td className="px-4 py-3 text-right font-bold text-white">
-                            {formatAmount(req.amount)}{" "}
-                            <span className="text-gray-500 font-normal">tCTC</span>
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <ScoreCell address={req.borrower} />
-                          </td>
-                          <td className="px-4 py-3 text-right text-gray-400 text-xs">
-                            {formatDeadline(req.validUntil)}
-                          </td>
+                          <td className="px-4 py-3 text-right font-bold text-white">{formatAmount(req.amount)} <span className="text-gray-500 font-normal">tCTC</span></td>
+                          <td className="px-4 py-3 text-center"><ScoreCell address={req.borrower} /></td>
+                          <td className="px-4 py-3 text-right text-gray-400 text-xs">{formatDeadline(req.validUntil)}</td>
                           <td className="px-4 py-3 text-right">
-                            {offerCount > 0 ? (
-                              <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold">
-                                {offerCount}
-                              </span>
-                            ) : (
-                              <span className="text-gray-600 text-xs">—</span>
-                            )}
+                            {offerCount > 0
+                              ? <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold">{offerCount}</span>
+                              : <span className="text-gray-600 text-xs">—</span>}
                           </td>
                           <td className="px-4 py-3 text-right">
                             {!isOwn && address && (
-                              <button
-                                onClick={() => setFundTarget(req)}
-                                className="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-400 text-xs font-semibold rounded-lg transition-colors"
-                              >
-                                Fund
-                              </button>
+                              <button onClick={() => setFundTarget(req)} className="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-400 text-xs font-semibold rounded-lg transition-colors">Fund</button>
                             )}
                             {isOwn && (
-                              <button
-                                onClick={() => handleCancelRequest(req)}
-                                disabled={isPending || isConfirming}
-                                className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
-                              >
-                                Cancel
-                              </button>
+                              <button onClick={() => handleCancelRequest(req)} disabled={isPending || isConfirming} className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40">Cancel</button>
                             )}
                           </td>
                         </tr>
@@ -512,12 +416,10 @@ export default function MarketPage() {
             </div>
           )}
 
-          {/* ── Public Offers Tab ─────────────────────── */}
+          {/* ── Public Offers Tab ────────────────────── */}
           {tab === "public" && !loading && (
             <div className="overflow-x-auto">
-              {openPublicOffers.length === 0 ? (
-                <p className="text-gray-500 text-sm p-6">No open public offers.</p>
-              ) : (
+              {openPublicOffers.length === 0 ? <p className="text-gray-500 text-sm p-6">No open public offers.</p> : (
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-gray-500 text-xs border-b border-gray-800">
@@ -539,39 +441,17 @@ export default function MarketPage() {
                             {shortenAddress(po.lender)}
                             {isOwn && <span className="ml-2 text-xs text-green-400">(you)</span>}
                           </td>
-                          <td className="px-4 py-3 text-right font-bold text-white">
-                            {formatAmount(po.amount)}{" "}
-                            <span className="text-gray-500 font-normal">tCTC</span>
-                          </td>
-                          <td className="px-4 py-3 text-right text-green-400 font-semibold">
-                            {formatRate(po.aprBps)}
-                          </td>
-                          <td className="px-4 py-3 text-right text-gray-300">
-                            {formatDuration(po.durationSecs)}
-                          </td>
-                          <td className="px-4 py-3 text-right text-yellow-400 font-semibold">
-                            {po.minCreditScore.toString()}
-                          </td>
-                          <td className="px-4 py-3 text-right text-gray-400 text-xs">
-                            {formatDeadline(po.validUntil)}
-                          </td>
+                          <td className="px-4 py-3 text-right font-bold text-white">{formatAmount(po.amount)} <span className="text-gray-500 font-normal">tCTC</span></td>
+                          <td className="px-4 py-3 text-right text-green-400 font-semibold">{formatRate(po.aprBps)}</td>
+                          <td className="px-4 py-3 text-right text-gray-300">{formatDuration(po.durationSecs)}</td>
+                          <td className="px-4 py-3 text-right text-yellow-400 font-semibold">{po.minCreditScore.toString()}</td>
+                          <td className="px-4 py-3 text-right text-gray-400 text-xs">{formatDeadline(po.validUntil)}</td>
                           <td className="px-4 py-3 text-right">
                             {!isOwn && address && (
-                              <button
-                                onClick={() => setTakeTarget(po)}
-                                className="px-3 py-1.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-400 text-xs font-semibold rounded-lg transition-colors"
-                              >
-                                Take
-                              </button>
+                              <button onClick={() => setTakeTarget(po)} className="px-3 py-1.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-400 text-xs font-semibold rounded-lg transition-colors">Take</button>
                             )}
                             {isOwn && (
-                              <button
-                                onClick={() => handleCancelPubOffer(po)}
-                                disabled={isPending || isConfirming}
-                                className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
-                              >
-                                Cancel
-                              </button>
+                              <button onClick={() => handleCancelPubOffer(po)} disabled={isPending || isConfirming} className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40">Cancel</button>
                             )}
                           </td>
                         </tr>
@@ -583,14 +463,14 @@ export default function MarketPage() {
             </div>
           )}
 
-          {/* ── My Offers Tab (inbox) ─────────────────── */}
+          {/* ── My Offers Tab ────────────────────────── */}
           {tab === "myoffers" && !loading && (
             <div className="overflow-x-auto">
-              {!address ? (
-                <p className="text-gray-500 text-sm p-6">Connect wallet to see offers for your requests.</p>
-              ) : myInboxOffers.length === 0 ? (
-                <p className="text-gray-500 text-sm p-6">No pending offers for your open requests.</p>
-              ) : (
+              {!address
+                ? <p className="text-gray-500 text-sm p-6">Connect wallet to see offers for your requests.</p>
+                : myInboxOffers.length === 0
+                  ? <p className="text-gray-500 text-sm p-6">No pending offers for your open requests.</p>
+                  : (
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-gray-500 text-xs border-b border-gray-800">
@@ -607,39 +487,18 @@ export default function MarketPage() {
                       const isExpired = nowSecs > Number(offer.validUntil);
                       return (
                         <tr key={offer.id} className="hover:bg-gray-800/40 transition-colors">
-                          <td className="px-4 py-3 font-mono text-gray-300">
-                            {shortenAddress(offer.lender)}
-                          </td>
-                          <td className="px-4 py-3 text-right font-bold text-white">
-                            {formatAmount(offer.amount)}{" "}
-                            <span className="text-gray-500 font-normal">tCTC</span>
-                          </td>
-                          <td className="px-4 py-3 text-right text-green-400 font-semibold">
-                            {formatRate(offer.aprBps)}
-                          </td>
-                          <td className="px-4 py-3 text-right text-gray-300">
-                            {formatDuration(offer.durationSecs)}
-                          </td>
+                          <td className="px-4 py-3 font-mono text-gray-300">{shortenAddress(offer.lender)}</td>
+                          <td className="px-4 py-3 text-right font-bold text-white">{formatAmount(offer.amount)} <span className="text-gray-500 font-normal">tCTC</span></td>
+                          <td className="px-4 py-3 text-right text-green-400 font-semibold">{formatRate(offer.aprBps)}</td>
+                          <td className="px-4 py-3 text-right text-gray-300">{formatDuration(offer.durationSecs)}</td>
                           <td className={`px-4 py-3 text-right text-xs ${isExpired ? "text-red-400" : "text-gray-400"}`}>
                             {isExpired ? "Expired" : formatDeadline(offer.validUntil)}
                           </td>
                           <td className="px-4 py-3 text-right">
                             {!isExpired && (
                               <div className="flex gap-2 justify-end">
-                                <button
-                                  onClick={() => handleAcceptOffer(offer)}
-                                  disabled={isPending || isConfirming}
-                                  className="px-3 py-1.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
-                                >
-                                  Accept
-                                </button>
-                                <button
-                                  onClick={() => handleRejectOffer(offer)}
-                                  disabled={isPending || isConfirming}
-                                  className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
-                                >
-                                  Reject
-                                </button>
+                                <button onClick={() => handleAcceptOffer(offer)} disabled={isPending || isConfirming} className="px-3 py-1.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40">Accept</button>
+                                <button onClick={() => handleRejectOffer(offer)} disabled={isPending || isConfirming} className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40">Reject</button>
                               </div>
                             )}
                           </td>
@@ -652,12 +511,10 @@ export default function MarketPage() {
             </div>
           )}
 
-          {/* ── Active Loans Tab ──────────────────────── */}
+          {/* ── Active Loans Tab ─────────────────────── */}
           {tab === "loans" && !loading && (
             <div className="overflow-x-auto">
-              {allLoans.length === 0 ? (
-                <p className="text-gray-500 text-sm p-6">No loans yet.</p>
-              ) : (
+              {allLoans.length === 0 ? <p className="text-gray-500 text-sm p-6">No loans yet.</p> : (
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-gray-500 text-xs border-b border-gray-800">
@@ -682,49 +539,25 @@ export default function MarketPage() {
                             {shortenAddress(loan.borrower)}
                             {isBorrower && <span className="ml-1 text-xs text-green-400">(you)</span>}
                           </td>
-                          <td className="px-4 py-3 font-mono text-gray-300">
-                            {shortenAddress(loan.lender)}
-                          </td>
-                          <td className="px-4 py-3 text-right text-white font-semibold">
-                            {formatAmount(loan.principal)} tCTC
-                          </td>
-                          <td className="px-4 py-3 text-right text-yellow-400 font-semibold">
-                            {formatAmount(loan.repayDue)} tCTC
-                          </td>
-                          <td className={`px-4 py-3 text-right text-xs ${isOverdue ? "text-red-400" : "text-gray-300"}`}>
-                            {formatDeadline(loan.dueTime)}
-                          </td>
+                          <td className="px-4 py-3 font-mono text-gray-300">{shortenAddress(loan.lender)}</td>
+                          <td className="px-4 py-3 text-right text-white font-semibold">{formatAmount(loan.principal)} tCTC</td>
+                          <td className="px-4 py-3 text-right text-yellow-400 font-semibold">{formatAmount(loan.repayDue)} tCTC</td>
+                          <td className={`px-4 py-3 text-right text-xs ${isOverdue ? "text-red-400" : "text-gray-300"}`}>{formatDeadline(loan.dueTime)}</td>
                           <td className="px-4 py-3 text-center">
                             <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
                               loan.status === "Active"
-                                ? isOverdue
-                                  ? "bg-red-500/20 text-red-400"
-                                  : "bg-green-500/20 text-green-400"
-                                : loan.status === "Repaid"
-                                  ? "bg-blue-500/20 text-blue-400"
-                                  : "bg-gray-500/20 text-gray-400"
+                                ? isOverdue ? "bg-red-500/20 text-red-400" : "bg-green-500/20 text-green-400"
+                                : loan.status === "Repaid" ? "bg-blue-500/20 text-blue-400" : "bg-gray-500/20 text-gray-400"
                             }`}>
                               {isOverdue && loan.status === "Active" ? "Overdue" : loan.status}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right">
                             {isBorrower && loan.status === "Active" && !isOverdue && (
-                              <button
-                                onClick={() => handleRepay(loan)}
-                                disabled={isPending || isConfirming}
-                                className="px-3 py-1.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
-                              >
-                                Repay
-                              </button>
+                              <button onClick={() => handleRepay(loan)} disabled={isPending || isConfirming} className="px-3 py-1.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40">Repay</button>
                             )}
                             {isOverdue && loan.status === "Active" && (
-                              <button
-                                onClick={() => handleDefault(loan)}
-                                disabled={isPending || isConfirming}
-                                className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
-                              >
-                                Mark Default
-                              </button>
+                              <button onClick={() => handleDefault(loan)} disabled={isPending || isConfirming} className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40">Mark Default</button>
                             )}
                           </td>
                         </tr>
@@ -737,77 +570,50 @@ export default function MarketPage() {
           )}
         </div>
 
-        {/* ── Post Order Form ───────────────────────────── */}
+        {/* ── Post Order Form ──────────────────────────── */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4 h-fit">
           <h3 className="font-semibold text-white">Post Order</h3>
-
           <div className="flex gap-2">
             {(["borrow", "lend"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setPostType(t)}
-                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                  postType === t
-                    ? "bg-green-500 text-black"
-                    : "bg-gray-800 text-gray-400 hover:text-white"
-                }`}
-              >
+              <button key={t} onClick={() => setPostType(t)}
+                className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${postType === t ? "bg-green-500 text-black" : "bg-gray-800 text-gray-400 hover:text-white"}`}>
                 {t === "borrow" ? "Borrow" : "Lend"}
               </button>
             ))}
           </div>
-
           <div className="space-y-3">
             <div>
               <label className="text-xs text-gray-400">Amount (tCTC)</label>
-              <input
-                type="number" min="0" step="any" placeholder="100"
-                value={amount}
+              <input type="number" min="0" step="any" placeholder="100" value={amount}
                 onChange={(e) => { if (e.target.value === "" || /^\d*\.?\d*$/.test(e.target.value)) setAmount(e.target.value); }}
-                className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              />
+                className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
             </div>
-
             <div>
               <label className="text-xs text-gray-400">Valid for (days)</label>
-              <input
-                type="number" min="1" step="1" placeholder="7"
-                value={validDays}
+              <input type="number" min="1" step="1" placeholder="7" value={validDays}
                 onChange={(e) => { if (e.target.value === "" || /^\d*$/.test(e.target.value)) setValidDays(e.target.value); }}
-                className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-              />
+                className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
             </div>
-
             {postType === "lend" && (
               <>
                 <div>
                   <label className="text-xs text-gray-400">APR (% per year)</label>
-                  <input
-                    type="number" min="0" step="any" placeholder="10"
-                    value={apr}
+                  <input type="number" min="0" step="any" placeholder="10" value={apr}
                     onChange={(e) => { if (e.target.value === "" || /^\d*\.?\d*$/.test(e.target.value)) setApr(e.target.value); }}
-                    className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
+                    className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-400">Duration (days)</label>
-                  <input
-                    type="number" min="0" step="any" placeholder="30"
-                    value={duration}
+                  <input type="number" min="0" step="any" placeholder="30" value={duration}
                     onChange={(e) => { if (e.target.value === "" || /^\d*\.?\d*$/.test(e.target.value)) setDuration(e.target.value); }}
-                    className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
+                    className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
                 </div>
                 <div>
                   <label className="text-xs text-gray-400">Min Credit Score (0 = no filter)</label>
-                  <input
-                    type="number" min="0" step="1" placeholder="0"
-                    value={minScore}
+                  <input type="number" min="0" step="1" placeholder="0" value={minScore}
                     onChange={(e) => { if (e.target.value === "" || /^\d*$/.test(e.target.value)) setMinScore(e.target.value); }}
-                    className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
+                    className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
                 </div>
-
                 {repayPreview && (
                   <div className="bg-gray-800 rounded-lg p-3 text-xs space-y-1">
                     <p className="text-gray-400">Borrower repays (estimated)</p>
@@ -817,35 +623,16 @@ export default function MarketPage() {
                 )}
               </>
             )}
-
             {postType === "borrow" && (
               <p className="text-xs text-gray-500 bg-gray-800 rounded-lg p-3">
                 Lenders will see your credit score and send offers. You choose which to accept.
               </p>
             )}
           </div>
-
-          <button
-            onClick={handlePost}
-            disabled={
-              !address ||
-              isPending ||
-              isConfirming ||
-              !amount ||
-              !validDays ||
-              (postType === "lend" && (!apr || !duration))
-            }
-            className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-40 text-black font-bold py-2.5 rounded-lg transition-colors"
-          >
-            {!address
-              ? "Connect Wallet"
-              : isPending
-                ? "Confirm in wallet..."
-                : isConfirming
-                  ? "Processing..."
-                  : postType === "borrow"
-                    ? "Post Borrow Request"
-                    : `Post Lend Offer (${amount || "0"} tCTC locked)`}
+          <button onClick={handlePost}
+            disabled={!address || isPending || isConfirming || !amount || !validDays || (postType === "lend" && (!apr || !duration))}
+            className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-40 text-black font-bold py-2.5 rounded-lg transition-colors">
+            {!address ? "Connect Wallet" : isPending ? "Confirm in wallet..." : isConfirming ? "Processing..." : postType === "borrow" ? "Post Borrow Request" : `Post Lend Offer (${amount || "0"} tCTC locked)`}
           </button>
         </div>
       </div>
