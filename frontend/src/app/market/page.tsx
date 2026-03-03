@@ -2,17 +2,16 @@
 
 import { useState, useEffect } from "react";
 import { useQuery } from "@apollo/client";
-import {
-  useAccount,
-  useWriteContract,
-  useWaitForTransactionReceipt,
-} from "wagmi";
+import { useAccount, useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { parseEther, formatEther } from "viem";
 import { GET_MARKET, GET_CREDIT_SCORE } from "@/lib/ponder";
 import { LENDING_MARKET_ADDRESS, LENDING_MARKET_ABI } from "@/lib/contracts";
 import { shortenAddress } from "@/lib/utils";
 
-// ─── Tier badge ────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// TIER BADGE
+// ═══════════════════════════════════════════════════════
+
 const TIER_COLOR: Record<string, string> = {
   AAA: "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30",
   AA:  "bg-blue-500/20   text-blue-400   border border-blue-500/30",
@@ -29,24 +28,26 @@ function TierBadge({ tier }: { tier: string }) {
   );
 }
 
-// ─── Format helpers ─────────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// FORMAT HELPERS
+// ═══════════════════════════════════════════════════════
+
 function formatAmount(wei: bigint | string): string {
   try {
     const val = formatEther(BigInt(wei.toString()));
     const num = parseFloat(val);
-    return num < 0.001 ? num.toExponential(2) : num.toLocaleString(undefined, { maximumFractionDigits: 4 });
-  } catch {
-    return "0";
-  }
+    return num < 0.001
+      ? num.toExponential(2)
+      : num.toLocaleString(undefined, { maximumFractionDigits: 4 });
+  } catch { return "0"; }
 }
 
 function formatDeadline(ts: bigint | string): string {
   try {
-    const date = new Date(Number(ts) * 1000);
-    return date.toLocaleDateString("en-US", { day: "numeric", month: "short", year: "numeric" });
-  } catch {
-    return "-";
-  }
+    return new Date(Number(ts) * 1000).toLocaleDateString("en-US", {
+      day: "numeric", month: "short", year: "numeric",
+    });
+  } catch { return "-"; }
 }
 
 function formatRate(bps: bigint | string): string {
@@ -54,20 +55,20 @@ function formatRate(bps: bigint | string): string {
 }
 
 function formatDuration(secs: bigint | string): string {
-  const days = Math.round(Number(secs) / 86400);
-  return `${days}d`;
+  return `${Math.round(Number(secs) / 86400)}d`;
 }
 
-// ─── Score cell for ask table ───────────────────────────────
+// ═══════════════════════════════════════════════════════
+// SCORE CELL
+// ═══════════════════════════════════════════════════════
+
 function ScoreCell({ address }: { address: string }) {
   const { data } = useQuery(GET_CREDIT_SCORE, {
     variables: { address: address.toLowerCase() },
     skip: !address,
   });
-
   const score = data?.creditScore;
   if (!score) return <span className="text-gray-500 text-sm">—</span>;
-
   return (
     <div className="flex items-center justify-center gap-2">
       <span className="font-bold text-white">{score.totalScore}</span>
@@ -76,36 +77,41 @@ function ScoreCell({ address }: { address: string }) {
   );
 }
 
-// ─── Fund modal (lender accepts ask) ───────────────────────
-function FundModal({
-  ask,
-  myBids,
-  onClose,
-}: {
-  ask: any;
-  myBids: any[];
-  onClose: () => void;
-}) {
-  const [selectedBidId, setSelectedBidId] = useState<string>("");
+// ═══════════════════════════════════════════════════════
+// FUND MODAL — Lender funds a specific Request
+// ═══════════════════════════════════════════════════════
+
+function FundModal({ req, onClose }: { req: any; onClose: () => void }) {
+  const [aprInput, setAprInput]           = useState("");
+  const [durationInput, setDurationInput] = useState("");
+  const [validDays, setValidDays]         = useState("7");
+
   const { writeContract, data: txHash, isPending } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
-  useEffect(() => {
-    if (isSuccess) {
-      setTimeout(() => onClose(), 3000);
-    }
-  }, [isSuccess]);
+  useEffect(() => { if (isSuccess) setTimeout(() => onClose(), 3000); }, [isSuccess]);
 
-  const selectedBid = myBids.find((b) => b.orderId === selectedBidId);
+  const estimatedRepay =
+    aprInput && durationInput && req?.amount
+      ? parseFloat(formatEther(BigInt(req.amount))) +
+        parseFloat(formatEther(BigInt(req.amount))) *
+          (parseFloat(aprInput) / 100) *
+          (parseFloat(durationInput) / 365)
+      : null;
 
   async function handleFund() {
-    if (!selectedBid) return;
+    if (!aprInput || !durationInput || !validDays) return;
     writeContract({
       address: LENDING_MARKET_ADDRESS,
       abi: LENDING_MARKET_ABI,
-      functionName: "acceptAsk",
-      args: [BigInt(selectedBid.orderId), BigInt(ask.orderId)],
-      value: BigInt(ask.amount),
+      functionName: "fundOffer",
+      args: [
+        BigInt(req.requestId),
+        BigInt(Math.round(parseFloat(aprInput) * 100)),
+        BigInt(Math.round(parseFloat(durationInput) * 86400)),
+        BigInt(Math.floor(Date.now() / 1000) + Math.round(parseFloat(validDays) * 86400)),
+      ],
+      value: BigInt(req.amount),
     });
   }
 
@@ -117,101 +123,89 @@ function FundModal({
           <button onClick={onClose} className="text-gray-500 hover:text-white text-xl">✕</button>
         </div>
 
-        {/* Ask summary */}
-        <div className="bg-gray-800 rounded-xl p-4 space-y-1">
-          <p className="text-xs text-gray-400">Borrower</p>
-          <p className="font-mono text-sm text-white">{shortenAddress(ask.borrower)}</p>
-          <p className="text-xs text-gray-400 mt-2">Amount requested</p>
-          <p className="text-xl font-bold text-green-400">{formatAmount(ask.amount)} tCTC</p>
+        <div className="bg-gray-800 rounded-xl p-4 space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-400">Borrower</span>
+            <span className="font-mono text-white">{shortenAddress(req.borrower)}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-400">Amount</span>
+            <span className="font-bold text-green-400">{formatAmount(req.amount)} tCTC</span>
+          </div>
+          <div className="flex justify-between text-sm items-center">
+            <span className="text-gray-400">Credit Score</span>
+            <ScoreCell address={req.borrower} />
+          </div>
         </div>
 
-        {/* Select bid */}
-        <div>
-          <label className="text-xs text-gray-400 mb-2 block">Select your Bid to use</label>
-          {myBids.length === 0 ? (
-            <p className="text-sm text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3">
-              You have no open bids. Post a Lend Offer first.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {myBids.map((bid) => (
-                <button
-                  key={bid.orderId}
-                  onClick={() => setSelectedBidId(bid.orderId)}
-                  className={`w-full text-left p-3 rounded-xl border transition-colors ${
-                    selectedBidId === bid.orderId
-                      ? "border-green-500 bg-green-500/10"
-                      : "border-gray-700 bg-gray-800 hover:border-gray-600"
-                  }`}
-                >
-                  <div className="flex justify-between items-center">
-                    <span className="text-white font-semibold">{formatAmount(bid.amount)} tCTC</span>
-                    <span className="text-gray-400 text-sm">
-                      {formatRate(bid.interestRate)} · {formatDuration(bid.duration)}
-                    </span>
-                  </div>
-                </button>
-              ))}
+        <div className="space-y-3">
+          {[
+            { label: "APR (% per year)", val: aprInput, set: setAprInput, ph: "10" },
+            { label: "Duration (days)",  val: durationInput, set: setDurationInput, ph: "30" },
+            { label: "Offer valid for (days)", val: validDays, set: setValidDays, ph: "7" },
+          ].map(({ label, val, set, ph }) => (
+            <div key={label}>
+              <label className="text-xs text-gray-400">{label}</label>
+              <input
+                type="number" min="0" step="any" placeholder={ph}
+                value={val}
+                onChange={(e) => { if (e.target.value === "" || /^\d*\.?\d*$/.test(e.target.value)) set(e.target.value); }}
+                className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
             </div>
-          )}
+          ))}
         </div>
 
-        {selectedBid && BigInt(selectedBid.amount) !== BigInt(ask.amount) && (
-          <p className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
-            ⚠ Selected bid amount ({formatAmount(selectedBid.amount)} tCTC) must match ask amount ({formatAmount(ask.amount)} tCTC).
-          </p>
+        {estimatedRepay && (
+          <div className="bg-gray-800 rounded-lg p-3 text-xs">
+            <p className="text-gray-400">Borrower repays (estimated)</p>
+            <p className="text-white font-semibold mt-1">{estimatedRepay.toFixed(4)} tCTC</p>
+          </div>
         )}
 
+        <p className="text-xs text-gray-500 bg-gray-800 rounded-lg p-3">
+          Your tCTC locks immediately. Borrower must accept before offer expires.
+        </p>
+
         {isSuccess && (
-          <p className="text-green-400 text-sm text-center">
-            ✓ Confirmed! Updating in a few seconds...
-          </p>
+          <p className="text-green-400 text-sm text-center">✓ Offer sent! Waiting for borrower to accept.</p>
         )}
 
         <button
           onClick={handleFund}
-          disabled={
-            !selectedBid ||
-            isPending ||
-            isConfirming ||
-            isSuccess ||
-            myBids.length === 0 ||
-            BigInt(selectedBid?.amount ?? 0) !== BigInt(ask.amount)
-          }
+          disabled={!aprInput || !durationInput || !validDays || isPending || isConfirming || isSuccess}
           className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-40 text-black font-bold py-3 rounded-xl transition-colors"
         >
-          {isPending ? "Confirm in wallet..." : isConfirming ? "Processing..." : `Fund ${formatAmount(ask.amount)} tCTC`}
+          {isPending ? "Confirm in wallet..." : isConfirming ? "Processing..." : `Fund ${formatAmount(req.amount)} tCTC`}
         </button>
       </div>
     </div>
   );
 }
 
-// ─── Take modal (borrower takes bid) ───────────────────────
-function TakeModal({
-  bid,
-  onClose,
-}: {
-  bid: any;
-  onClose: () => void;
-}) {
+// ═══════════════════════════════════════════════════════
+// TAKE MODAL — Borrower takes a Public Offer
+// ═══════════════════════════════════════════════════════
+
+function TakeModal({ po, onClose }: { po: any; onClose: () => void }) {
   const { writeContract, data: txHash, isPending } = useWriteContract();
   const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
-  useEffect(() => {
-    if (isSuccess) {
-      setTimeout(() => onClose(), 3000);
-    }
-  }, [isSuccess]);
+  useEffect(() => { if (isSuccess) setTimeout(() => onClose(), 3000); }, [isSuccess]);
 
-  // Borrower posts an Ask that matches this Bid, then lender accepts
-  // For UX simplicity: post Ask with same amount/currency automatically
+  const repayEstimate = po
+    ? parseFloat(formatEther(BigInt(po.amount))) +
+      parseFloat(formatEther(BigInt(po.amount))) *
+        (Number(po.aprBps) / 10000) *
+        (Number(po.durationSecs) / (365 * 86400))
+    : 0;
+
   async function handleTake() {
     writeContract({
       address: LENDING_MARKET_ADDRESS,
       abi: LENDING_MARKET_ABI,
-      functionName: "postAsk",
-      args: [BigInt(bid.amount), bid.currency],
+      functionName: "takeOffer",
+      args: [BigInt(po.offerId)],
     });
   }
 
@@ -219,38 +213,38 @@ function TakeModal({
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md space-y-5">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold text-white">Take Lend Offer</h3>
+          <h3 className="text-lg font-bold text-white">Take Public Offer</h3>
           <button onClick={onClose} className="text-gray-500 hover:text-white text-xl">✕</button>
         </div>
 
-        {/* Bid summary */}
-        <div className="bg-gray-800 rounded-xl p-4 space-y-3">
-          <div className="flex justify-between">
-            <span className="text-gray-400 text-sm">Lender</span>
-            <span className="font-mono text-sm text-white">{shortenAddress(bid.lender)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400 text-sm">Amount</span>
-            <span className="font-bold text-green-400">{formatAmount(bid.amount)} tCTC</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400 text-sm">Interest Rate</span>
-            <span className="text-white">{formatRate(bid.interestRate)} APR</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400 text-sm">Duration</span>
-            <span className="text-white">{formatDuration(bid.duration)}</span>
+        <div className="bg-gray-800 rounded-xl p-4 space-y-2 text-sm">
+          {[
+            { label: "Lender",       val: shortenAddress(po.lender), mono: true },
+            { label: "Amount",       val: `${formatAmount(po.amount)} tCTC`, green: true },
+            { label: "APR",          val: formatRate(po.aprBps) },
+            { label: "Duration",     val: formatDuration(po.durationSecs) },
+            { label: "Min Score",    val: po.minCreditScore.toString(), yellow: true },
+            { label: "Offer expires",val: formatDeadline(po.validUntil) },
+          ].map(({ label, val, mono, green, yellow }) => (
+            <div key={label} className="flex justify-between">
+              <span className="text-gray-400">{label}</span>
+              <span className={`${mono ? "font-mono" : ""} ${green ? "font-bold text-green-400" : ""} ${yellow ? "font-semibold text-yellow-400" : "text-white"}`}>
+                {val}
+              </span>
+            </div>
+          ))}
+          <div className="flex justify-between border-t border-gray-700 pt-2 mt-1">
+            <span className="text-gray-400">You repay (estimated)</span>
+            <span className="text-yellow-400 font-semibold">{repayEstimate.toFixed(4)} tCTC</span>
           </div>
         </div>
 
-        <p className="text-xs text-gray-400 bg-gray-800 rounded-lg p-3">
-          This will post a Borrow Request matching this offer. The lender will then fund your request.
+        <p className="text-xs text-gray-500 bg-gray-800 rounded-lg p-3">
+          First come first served. Your credit score is checked on-chain at this moment.
         </p>
 
         {isSuccess && (
-          <p className="text-green-400 text-sm text-center">
-            ✓ Confirmed! Updating in a few seconds...
-          </p>
+          <p className="text-green-400 text-sm text-center">✓ Confirmed! Loan is now active.</p>
         )}
 
         <button
@@ -258,235 +252,195 @@ function TakeModal({
           disabled={isPending || isConfirming || isSuccess}
           className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-40 text-black font-bold py-3 rounded-xl transition-colors"
         >
-          {isPending ? "Confirm in wallet..." : isConfirming ? "Processing..." : `Request ${formatAmount(bid.amount)} tCTC`}
+          {isPending ? "Confirm in wallet..." : isConfirming ? "Processing..." : `Take ${formatAmount(po.amount)} tCTC`}
         </button>
       </div>
     </div>
   );
 }
 
-// ─── Main Page ───────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════
+// MAIN PAGE
+// ═══════════════════════════════════════════════════════
+
+type Tab      = "requests" | "public" | "myoffers" | "loans";
+type PostType = "borrow"  | "lend";
+
 export default function MarketPage() {
   const { address } = useAccount();
-  const [tab, setTab] = useState<"bids" | "asks" | "deals">("bids");
-  const [postType, setPostType] = useState<"ask" | "bid">("ask");
-  const [amount, setAmount] = useState("");
-  const [interest, setInterest] = useState("");
-  const [duration, setDuration] = useState("");
+  const [tab, setTab]               = useState<Tab>("requests");
+  const [postType, setPostType]     = useState<PostType>("borrow");
   const [fundTarget, setFundTarget] = useState<any>(null);
   const [takeTarget, setTakeTarget] = useState<any>(null);
 
+  // Form state
+  const [amount, setAmount]       = useState("");
+  const [apr, setApr]             = useState("");
+  const [duration, setDuration]   = useState("");
+  const [validDays, setValidDays] = useState("7");
+  const [minScore, setMinScore]   = useState("0");
+
   const { data, loading, refetch } = useQuery(GET_MARKET);
-  const { writeContract, data: txHash, isPending } = useWriteContract();
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+  const { writeContract, data: txHash, isPending }     = useWriteContract();
+  const { isLoading: isConfirming, isSuccess }         = useWaitForTransactionReceipt({ hash: txHash });
 
   useEffect(() => {
     if (isSuccess) {
-      setAmount("");
-      setInterest("");
-      setDuration("");
-      // Tunggu 3 detik biar Ponder selesai process event
+      setAmount(""); setApr(""); setDuration(""); setValidDays("7"); setMinScore("0");
       setTimeout(() => refetch(), 3000);
     }
   }, [isSuccess]);
 
-  const bids  = (data?.bidOrders?.items  ?? []).filter((b: any) => b.status === "Open");
-  const asks  = (data?.askOrders?.items  ?? []).filter((a: any) => a.status === "Open");
-  const deals = (data?.deals?.items      ?? []);
-  const activeDeals = deals.filter((d: any) => d.status === "Active");
+  const nowSecs = Math.floor(Date.now() / 1000);
 
-  // My open bids (for Fund modal)
-  const myBids = bids.filter((b: any) => b.lender?.toLowerCase() === address?.toLowerCase());
+  // ── Data slices ───────────────────────────────────────
+  const allRequests     = data?.requests?.items      ?? [];
+  const allOffers       = data?.offers?.items         ?? [];
+  const allPublicOffers = data?.publicOffers?.items   ?? [];
+  const allLoans        = data?.loans?.items           ?? [];
 
-  // ── Post handler ───────────────────────────────────────────
+  const openRequests     = allRequests.filter((r: any)  => r.status === "Open");
+  const openPublicOffers = allPublicOffers.filter((p: any) => p.status === "Open");
+
+  // My Offers inbox — open offers for my open requests only
+  const myOpenRequestIds = new Set(
+    allRequests
+      .filter((r: any) => r.borrower?.toLowerCase() === address?.toLowerCase() && r.status === "Open")
+      .map((r: any) => r.requestId.toString())
+  );
+  const myInboxOffers = allOffers.filter(
+    (o: any) => o.status === "Open" && myOpenRequestIds.has(o.requestId.toString())
+  );
+
+  const activeLoans = allLoans.filter((l: any) => l.status === "Active");
+
+  // ── Post handler ──────────────────────────────────────
   async function handlePost() {
-    if (!address || !amount) return;
-
+    if (!address || !amount || !validDays) return;
     let parsedAmount: bigint;
     try {
       parsedAmount = parseEther(amount);
-      if (parsedAmount <= BigInt(0)) return;
-    } catch {
-      return;
-    }
+      if (parsedAmount <= 0n) return;
+    } catch { return; }
 
-    if (postType === "ask") {
+    const validUntilTs = BigInt(
+      Math.floor(Date.now() / 1000) + Math.round(parseFloat(validDays) * 86400)
+    );
+
+    if (postType === "borrow") {
       writeContract({
         address: LENDING_MARKET_ADDRESS,
         abi: LENDING_MARKET_ABI,
-        functionName: "postAsk",
-        args: [parsedAmount, "tCTC"],
+        functionName: "postRequest",
+        args: [parsedAmount, validUntilTs],
       });
     } else {
-      if (!interest || !duration) return;
-      try {
-        writeContract({
-          address: LENDING_MARKET_ADDRESS,
-          abi: LENDING_MARKET_ABI,
-          functionName: "postBid",
-          args: [
-            parsedAmount,
-            "tCTC",
-            BigInt(Math.round(Number(interest) * 100)),
-            BigInt(Math.round(Number(duration) * 86400)),
-          ],
-        });
-      } catch (err) {
-        console.error("writeContract error:", err);
-      }
+      if (!apr || !duration) return;
+      writeContract({
+        address: LENDING_MARKET_ADDRESS,
+        abi: LENDING_MARKET_ABI,
+        functionName: "postPublicOffer",
+        args: [
+          parsedAmount,
+          BigInt(Math.round(parseFloat(apr) * 100)),
+          BigInt(Math.round(parseFloat(duration) * 86400)),
+          validUntilTs,
+          BigInt(Math.round(parseFloat(minScore || "0"))),
+        ],
+        value: parsedAmount,
+      });
     }
   }
 
-  // ── Repay handler ─────────────────────────────────────────
-  async function handleRepay(d: any) {
-  writeContract({
-    address: LENDING_MARKET_ADDRESS,
-    abi: LENDING_MARKET_ABI,
-    functionName: "repayLoan",
-    args: [BigInt(d.dealId)],           //  dealId
-    value: BigInt(d.repaymentDue),      // tCTC sen for msg.value
-  });
-}
+  // ── Contract action handlers ──────────────────────────
+  const contractCall = (functionName: string, args: any[], value?: bigint) =>
+    writeContract({ address: LENDING_MARKET_ADDRESS, abi: LENDING_MARKET_ABI, functionName: functionName as any, args, ...(value ? { value } : {}) });
 
-  // ── Mark default handler ──────────────────────────────────
-  async function handleDefault(d: any) {
-    writeContract({
-      address: LENDING_MARKET_ADDRESS,
-      abi: LENDING_MARKET_ABI,
-      functionName: "markDefault" as unknown as any,
-      args: [BigInt(d.dealId), BigInt(0)],
-    });
-  }
+  const handleRepay          = (loan: any)   => contractCall("repay",            [BigInt(loan.loanId)],   BigInt(loan.repayDue));
+  const handleDefault        = (loan: any)   => contractCall("markDefault",       [BigInt(loan.loanId)]);
+  const handleCancelRequest  = (req: any)    => contractCall("cancelRequest",     [BigInt(req.requestId)]);
+  const handleCancelPubOffer = (po: any)     => contractCall("cancelPublicOffer", [BigInt(po.offerId)]);
+  const handleAcceptOffer    = (offer: any)  => contractCall("acceptOffer",       [BigInt(offer.offerId)]);
+  const handleRejectOffer    = (offer: any)  => contractCall("rejectOffer",       [BigInt(offer.offerId)]);
+  const handleWithdrawRefund = ()            => contractCall("withdrawRefund",    []);
 
-  // ── Cancel handlers ───────────────────────────────────────
-  async function handleCancelBid(bid: any) {
-    writeContract({
-      address: LENDING_MARKET_ADDRESS,
-      abi: LENDING_MARKET_ABI,
-      functionName: "cancelBid" as unknown as any,
-      args: [BigInt(bid.orderId)],
-    });
-  }
+  // ── Repay preview ─────────────────────────────────────
+  const repayPreview =
+    amount && apr && duration
+      ? (
+          parseFloat(amount) +
+          parseFloat(amount) * (parseFloat(apr) / 100) * (parseFloat(duration) / 365)
+        ).toFixed(4)
+      : null;
 
-  async function handleCancelAsk(ask: any) {
-    writeContract({
-      address: LENDING_MARKET_ADDRESS,
-      abi: LENDING_MARKET_ABI,
-      functionName: "cancelAsk" as unknown as any,
-      args: [BigInt(ask.orderId)],
-    });
-  }
-
-  const nowSecs = Math.floor(Date.now() / 1000);
+  // ── Tab config ────────────────────────────────────────
+  const tabs: { key: Tab; label: string }[] = [
+    { key: "requests", label: `Requests (${openRequests.length})`              },
+    { key: "public",   label: `Public Offers (${openPublicOffers.length})`     },
+    { key: "myoffers", label: `My Offers (${myInboxOffers.length})`            },
+    { key: "loans",    label: `Active Loans (${activeLoans.length})`           },
+  ];
 
   return (
     <div className="space-y-6">
       {/* Modals */}
       {fundTarget && (
-        <FundModal
-          ask={fundTarget}
-          myBids={myBids}
-          onClose={() => { setFundTarget(null); refetch(); }}
-        />
+        <FundModal req={fundTarget} onClose={() => { setFundTarget(null); setTimeout(() => refetch(), 3000); }} />
       )}
       {takeTarget && (
-        <TakeModal
-          bid={takeTarget}
-          onClose={() => { setTakeTarget(null); refetch(); }}
-        />
+        <TakeModal po={takeTarget} onClose={() => { setTakeTarget(null); setTimeout(() => refetch(), 3000); }} />
       )}
 
       <h1 className="text-2xl font-bold text-white">Lending Market</h1>
 
+      {/* Pending Refund Banner */}
+      {address && (
+        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-yellow-400 text-sm font-semibold">Pending Refunds</p>
+            <p className="text-gray-400 text-xs mt-0.5">
+              You may have unclaimed tCTC from rejected or expired offers.
+            </p>
+          </div>
+          <button
+            onClick={handleWithdrawRefund}
+            disabled={isPending || isConfirming}
+            className="shrink-0 px-4 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/30 text-yellow-400 text-sm font-semibold rounded-lg transition-colors disabled:opacity-40"
+          >
+            Withdraw
+          </button>
+        </div>
+      )}
+
       <div className="grid md:grid-cols-3 gap-6">
-        {/* ── Order / Deal list ──────────────────────────── */}
+
+        {/* ── Market Tables ─────────────────────────────── */}
         <div className="md:col-span-2 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
+
           {/* Tabs */}
-          <div className="flex border-b border-gray-800">
-            {(["bids", "asks", "deals"] as const).map((t) => (
+          <div className="flex border-b border-gray-800 overflow-x-auto">
+            {tabs.map(({ key, label }) => (
               <button
-                key={t}
-                onClick={() => setTab(t)}
-                className={`flex-1 py-3 text-sm font-semibold capitalize transition-colors ${
-                  tab === t
+                key={key}
+                onClick={() => setTab(key)}
+                className={`flex-1 min-w-fit px-3 py-3 text-xs font-semibold whitespace-nowrap transition-colors ${
+                  tab === key
                     ? "text-white border-b-2 border-green-500"
                     : "text-gray-500 hover:text-gray-300"
                 }`}
               >
-                {t === "bids" ? `Bids (${bids.length})` : t === "asks" ? `Asks (${asks.length})` : `Active Deals (${deals.filter((d: any) => d.status === "Active").length})`}
+                {label}
               </button>
             ))}
           </div>
 
           {loading && <p className="text-gray-500 text-sm p-6">Loading...</p>}
 
-          {/* ── Bids table ─────────────────────────────── */}
-          {tab === "bids" && !loading && (
+          {/* ── Requests Tab ──────────────────────────── */}
+          {tab === "requests" && !loading && (
             <div className="overflow-x-auto">
-              {bids.length === 0 ? (
-                <p className="text-gray-500 text-sm p-6">No open bids.</p>
-              ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-gray-500 text-xs border-b border-gray-800">
-                      <th className="text-left px-4 py-3">Lender</th>
-                      <th className="text-right px-4 py-3">Amount</th>
-                      <th className="text-right px-4 py-3">Rate</th>
-                      <th className="text-right px-4 py-3">Duration</th>
-                      <th className="text-right px-4 py-3">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-800">
-                    {bids.map((bid: any) => {
-                      const isOwn = bid.lender?.toLowerCase() === address?.toLowerCase();
-                      return (
-                        <tr key={bid.id} className="hover:bg-gray-800/40 transition-colors">
-                          <td className="px-4 py-3 font-mono text-gray-300">
-                            {shortenAddress(bid.lender)}
-                            {isOwn && <span className="ml-2 text-xs text-green-400">(you)</span>}
-                          </td>
-                          <td className="px-4 py-3 text-right font-bold text-white">
-                            {formatAmount(bid.amount)} <span className="text-gray-500 font-normal">tCTC</span>
-                          </td>
-                          <td className="px-4 py-3 text-right text-green-400 font-semibold">
-                            {formatRate(bid.interestRate)}
-                          </td>
-                          <td className="px-4 py-3 text-right text-gray-300">
-                            {formatDuration(bid.duration)}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            {!isOwn && (
-                              <button
-                                onClick={() => setTakeTarget(bid)}
-                                className="px-3 py-1.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-400 text-xs font-semibold rounded-lg transition-colors"
-                              >
-                                Take
-                              </button>
-                            )}
-                            {isOwn && (
-                              <button
-                                onClick={() => handleCancelBid(bid)}
-                                disabled={isPending || isConfirming}
-                                className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
-                              >
-                                Cancel
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          )}
-
-          {/* ── Asks table ─────────────────────────────── */}
-          {tab === "asks" && !loading && (
-            <div className="overflow-x-auto">
-              {asks.length === 0 ? (
-                <p className="text-gray-500 text-sm p-6">No open asks.</p>
+              {openRequests.length === 0 ? (
+                <p className="text-gray-500 text-sm p-6">No open borrow requests.</p>
               ) : (
                 <table className="w-full text-sm">
                   <thead>
@@ -494,28 +448,46 @@ export default function MarketPage() {
                       <th className="text-left px-4 py-3">Borrower</th>
                       <th className="text-right px-4 py-3">Amount</th>
                       <th className="text-center px-4 py-3">Credit Score</th>
+                      <th className="text-right px-4 py-3">Expires</th>
+                      <th className="text-right px-4 py-3">Offers</th>
                       <th className="text-right px-4 py-3">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
-                    {asks.map((ask: any) => {
-                      const isOwn = ask.borrower?.toLowerCase() === address?.toLowerCase();
+                    {openRequests.map((req: any) => {
+                      const isOwn = req.borrower?.toLowerCase() === address?.toLowerCase();
+                      const offerCount = allOffers.filter(
+                        (o: any) => o.requestId.toString() === req.requestId.toString() && o.status === "Open"
+                      ).length;
                       return (
-                        <tr key={ask.id} className="hover:bg-gray-800/40 transition-colors">
+                        <tr key={req.id} className="hover:bg-gray-800/40 transition-colors">
                           <td className="px-4 py-3 font-mono text-gray-300">
-                            {shortenAddress(ask.borrower)}
+                            {shortenAddress(req.borrower)}
                             {isOwn && <span className="ml-2 text-xs text-green-400">(you)</span>}
                           </td>
                           <td className="px-4 py-3 text-right font-bold text-white">
-                            {formatAmount(ask.amount)} <span className="text-gray-500 font-normal">tCTC</span>
+                            {formatAmount(req.amount)}{" "}
+                            <span className="text-gray-500 font-normal">tCTC</span>
                           </td>
                           <td className="px-4 py-3 text-center">
-                            <ScoreCell address={ask.borrower} />
+                            <ScoreCell address={req.borrower} />
+                          </td>
+                          <td className="px-4 py-3 text-right text-gray-400 text-xs">
+                            {formatDeadline(req.validUntil)}
                           </td>
                           <td className="px-4 py-3 text-right">
-                            {!isOwn && (
+                            {offerCount > 0 ? (
+                              <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full font-semibold">
+                                {offerCount}
+                              </span>
+                            ) : (
+                              <span className="text-gray-600 text-xs">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {!isOwn && address && (
                               <button
-                                onClick={() => setFundTarget(ask)}
+                                onClick={() => setFundTarget(req)}
                                 className="px-3 py-1.5 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-400 text-xs font-semibold rounded-lg transition-colors"
                               >
                                 Fund
@@ -523,7 +495,7 @@ export default function MarketPage() {
                             )}
                             {isOwn && (
                               <button
-                                onClick={() => handleCancelAsk(ask)}
+                                onClick={() => handleCancelRequest(req)}
                                 disabled={isPending || isConfirming}
                                 className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
                               >
@@ -540,11 +512,151 @@ export default function MarketPage() {
             </div>
           )}
 
-          {/* ── Active Deals table ────────────────────── */}
-          {tab === "deals" && !loading && (
+          {/* ── Public Offers Tab ─────────────────────── */}
+          {tab === "public" && !loading && (
             <div className="overflow-x-auto">
-              {activeDeals.length === 0 ? (
-                <p className="text-gray-500 text-sm p-6">No active deals.</p>
+              {openPublicOffers.length === 0 ? (
+                <p className="text-gray-500 text-sm p-6">No open public offers.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-gray-500 text-xs border-b border-gray-800">
+                      <th className="text-left px-4 py-3">Lender</th>
+                      <th className="text-right px-4 py-3">Amount</th>
+                      <th className="text-right px-4 py-3">APR</th>
+                      <th className="text-right px-4 py-3">Duration</th>
+                      <th className="text-right px-4 py-3">Min Score</th>
+                      <th className="text-right px-4 py-3">Expires</th>
+                      <th className="text-right px-4 py-3">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {openPublicOffers.map((po: any) => {
+                      const isOwn = po.lender?.toLowerCase() === address?.toLowerCase();
+                      return (
+                        <tr key={po.id} className="hover:bg-gray-800/40 transition-colors">
+                          <td className="px-4 py-3 font-mono text-gray-300">
+                            {shortenAddress(po.lender)}
+                            {isOwn && <span className="ml-2 text-xs text-green-400">(you)</span>}
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold text-white">
+                            {formatAmount(po.amount)}{" "}
+                            <span className="text-gray-500 font-normal">tCTC</span>
+                          </td>
+                          <td className="px-4 py-3 text-right text-green-400 font-semibold">
+                            {formatRate(po.aprBps)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-gray-300">
+                            {formatDuration(po.durationSecs)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-yellow-400 font-semibold">
+                            {po.minCreditScore.toString()}
+                          </td>
+                          <td className="px-4 py-3 text-right text-gray-400 text-xs">
+                            {formatDeadline(po.validUntil)}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {!isOwn && address && (
+                              <button
+                                onClick={() => setTakeTarget(po)}
+                                className="px-3 py-1.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-400 text-xs font-semibold rounded-lg transition-colors"
+                              >
+                                Take
+                              </button>
+                            )}
+                            {isOwn && (
+                              <button
+                                onClick={() => handleCancelPubOffer(po)}
+                                disabled={isPending || isConfirming}
+                                className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
+                              >
+                                Cancel
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
+          {/* ── My Offers Tab (inbox) ─────────────────── */}
+          {tab === "myoffers" && !loading && (
+            <div className="overflow-x-auto">
+              {!address ? (
+                <p className="text-gray-500 text-sm p-6">Connect wallet to see offers for your requests.</p>
+              ) : myInboxOffers.length === 0 ? (
+                <p className="text-gray-500 text-sm p-6">No pending offers for your open requests.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-gray-500 text-xs border-b border-gray-800">
+                      <th className="text-left px-4 py-3">Lender</th>
+                      <th className="text-right px-4 py-3">Amount</th>
+                      <th className="text-right px-4 py-3">APR</th>
+                      <th className="text-right px-4 py-3">Duration</th>
+                      <th className="text-right px-4 py-3">Offer Expires</th>
+                      <th className="text-right px-4 py-3">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {myInboxOffers.map((offer: any) => {
+                      const isExpired = nowSecs > Number(offer.validUntil);
+                      return (
+                        <tr key={offer.id} className="hover:bg-gray-800/40 transition-colors">
+                          <td className="px-4 py-3 font-mono text-gray-300">
+                            {shortenAddress(offer.lender)}
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold text-white">
+                            {formatAmount(offer.amount)}{" "}
+                            <span className="text-gray-500 font-normal">tCTC</span>
+                          </td>
+                          <td className="px-4 py-3 text-right text-green-400 font-semibold">
+                            {formatRate(offer.aprBps)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-gray-300">
+                            {formatDuration(offer.durationSecs)}
+                          </td>
+                          <td className={`px-4 py-3 text-right text-xs ${isExpired ? "text-red-400" : "text-gray-400"}`}>
+                            {isExpired ? "Expired" : formatDeadline(offer.validUntil)}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {!isExpired && (
+                              <div className="flex gap-2 justify-end">
+                                <button
+                                  onClick={() => handleAcceptOffer(offer)}
+                                  disabled={isPending || isConfirming}
+                                  className="px-3 py-1.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
+                                >
+                                  Accept
+                                </button>
+                                <button
+                                  onClick={() => handleRejectOffer(offer)}
+                                  disabled={isPending || isConfirming}
+                                  className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
+          {/* ── Active Loans Tab ──────────────────────── */}
+          {tab === "loans" && !loading && (
+            <div className="overflow-x-auto">
+              {allLoans.length === 0 ? (
+                <p className="text-gray-500 text-sm p-6">No loans yet.</p>
               ) : (
                 <table className="w-full text-sm">
                   <thead>
@@ -555,59 +667,59 @@ export default function MarketPage() {
                       <th className="text-right px-4 py-3">Principal</th>
                       <th className="text-right px-4 py-3">Repay Due</th>
                       <th className="text-right px-4 py-3">Deadline</th>
-                      <th className="text-right px-4 py-3">Status</th>
+                      <th className="text-center px-4 py-3">Status</th>
                       <th className="text-right px-4 py-3">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-800">
-                    {activeDeals.map((d: any) => {
-                      const isBorrower = d.borrower?.toLowerCase() === address?.toLowerCase();
-                      const isOverdue  = nowSecs > Number(d.deadline) && d.status === "Active";
-
+                    {allLoans.map((loan: any) => {
+                      const isBorrower = loan.borrower?.toLowerCase() === address?.toLowerCase();
+                      const isOverdue  = nowSecs > Number(loan.dueTime) && loan.status === "Active";
                       return (
-                        <tr key={d.id} className="hover:bg-gray-800/40 transition-colors">
-                          <td className="px-4 py-3 text-gray-400">#{d.dealId}</td>
+                        <tr key={loan.id} className="hover:bg-gray-800/40 transition-colors">
+                          <td className="px-4 py-3 text-gray-400">#{loan.loanId.toString()}</td>
                           <td className="px-4 py-3 font-mono text-gray-300">
-                            {shortenAddress(d.borrower)}
+                            {shortenAddress(loan.borrower)}
+                            {isBorrower && <span className="ml-1 text-xs text-green-400">(you)</span>}
                           </td>
                           <td className="px-4 py-3 font-mono text-gray-300">
-                            {shortenAddress(d.lender)}
+                            {shortenAddress(loan.lender)}
                           </td>
                           <td className="px-4 py-3 text-right text-white font-semibold">
-                            {formatAmount(d.amount)} tCTC
+                            {formatAmount(loan.principal)} tCTC
                           </td>
                           <td className="px-4 py-3 text-right text-yellow-400 font-semibold">
-                            {d.repaymentDue ? formatAmount(d.repaymentDue) : "—"} tCTC
+                            {formatAmount(loan.repayDue)} tCTC
                           </td>
-                          <td className={`px-4 py-3 text-right ${isOverdue ? "text-red-400" : "text-gray-300"}`}>
-                            {formatDeadline(d.deadline)}
+                          <td className={`px-4 py-3 text-right text-xs ${isOverdue ? "text-red-400" : "text-gray-300"}`}>
+                            {formatDeadline(loan.dueTime)}
                           </td>
-                          <td className="px-4 py-3 text-right">
+                          <td className="px-4 py-3 text-center">
                             <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                              d.status === "Active"
+                              loan.status === "Active"
                                 ? isOverdue
                                   ? "bg-red-500/20 text-red-400"
                                   : "bg-green-500/20 text-green-400"
-                                : d.status === "Repaid"
+                                : loan.status === "Repaid"
                                   ? "bg-blue-500/20 text-blue-400"
                                   : "bg-gray-500/20 text-gray-400"
                             }`}>
-                              {isOverdue && d.status === "Active" ? "Overdue" : d.status}
+                              {isOverdue && loan.status === "Active" ? "Overdue" : loan.status}
                             </span>
                           </td>
                           <td className="px-4 py-3 text-right">
-                            {isBorrower && d.status === "Active" && !isOverdue && (
+                            {isBorrower && loan.status === "Active" && !isOverdue && (
                               <button
-                                onClick={() => handleRepay(d)}
+                                onClick={() => handleRepay(loan)}
                                 disabled={isPending || isConfirming}
                                 className="px-3 py-1.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
                               >
                                 Repay
                               </button>
                             )}
-                            {isOverdue && d.status === "Active" && (
+                            {isOverdue && loan.status === "Active" && (
                               <button
-                                onClick={() => handleDefault(d)}
+                                onClick={() => handleDefault(loan)}
                                 disabled={isPending || isConfirming}
                                 className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
                               >
@@ -625,13 +737,12 @@ export default function MarketPage() {
           )}
         </div>
 
-        {/* ── Post Order Form ────────────────────────────── */}
+        {/* ── Post Order Form ───────────────────────────── */}
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 space-y-4 h-fit">
           <h3 className="font-semibold text-white">Post Order</h3>
 
-          {/* Borrow / Lend toggle */}
           <div className="flex gap-2">
-            {(["ask", "bid"] as const).map((t) => (
+            {(["borrow", "lend"] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setPostType(t)}
@@ -641,87 +752,78 @@ export default function MarketPage() {
                     : "bg-gray-800 text-gray-400 hover:text-white"
                 }`}
               >
-                {t === "ask" ? "Borrow" : "Lend"}
+                {t === "borrow" ? "Borrow" : "Lend"}
               </button>
             ))}
           </div>
 
           <div className="space-y-3">
-            {/* Amount */}
             <div>
               <label className="text-xs text-gray-400">Amount (tCTC)</label>
               <input
-                type="number"
-                min="0"
-                step="any"
-                className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                placeholder="100"
+                type="number" min="0" step="any" placeholder="100"
                 value={amount}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === "" || /^\d*\.?\d*$/.test(val)) setAmount(val);
-                }}
+                onChange={(e) => { if (e.target.value === "" || /^\d*\.?\d*$/.test(e.target.value)) setAmount(e.target.value); }}
+                className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
             </div>
 
-            {/* Lend-only fields */}
-            {postType === "bid" && (
+            <div>
+              <label className="text-xs text-gray-400">Valid for (days)</label>
+              <input
+                type="number" min="1" step="1" placeholder="7"
+                value={validDays}
+                onChange={(e) => { if (e.target.value === "" || /^\d*$/.test(e.target.value)) setValidDays(e.target.value); }}
+                className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+            </div>
+
+            {postType === "lend" && (
               <>
                 <div>
-                  <label className="text-xs text-gray-400">Interest Rate (% APR)</label>
+                  <label className="text-xs text-gray-400">APR (% per year)</label>
                   <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    placeholder="5"
-                    value={interest}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === "" || /^\d*\.?\d*$/.test(val)) setInterest(val);
-                    }}
+                    type="number" min="0" step="any" placeholder="10"
+                    value={apr}
+                    onChange={(e) => { if (e.target.value === "" || /^\d*\.?\d*$/.test(e.target.value)) setApr(e.target.value); }}
+                    className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </div>
                 <div>
                   <label className="text-xs text-gray-400">Duration (days)</label>
                   <input
-                    type="number"
-                    min="0"
-                    step="any"
-                    className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                    placeholder="30"
+                    type="number" min="0" step="any" placeholder="30"
                     value={duration}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === "" || /^\d*\.?\d*$/.test(val)) setDuration(val);
-                    }}
+                    onChange={(e) => { if (e.target.value === "" || /^\d*\.?\d*$/.test(e.target.value)) setDuration(e.target.value); }}
+                    className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs text-gray-400">Min Credit Score (0 = no filter)</label>
+                  <input
+                    type="number" min="0" step="1" placeholder="0"
+                    value={minScore}
+                    onChange={(e) => { if (e.target.value === "" || /^\d*$/.test(e.target.value)) setMinScore(e.target.value); }}
+                    className="w-full mt-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-green-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                   />
                 </div>
 
-                {/* Estimated repayment preview */}
-                {amount && interest && duration && (
+                {repayPreview && (
                   <div className="bg-gray-800 rounded-lg p-3 text-xs space-y-1">
-                    <p className="text-gray-400">Estimated repayment</p>
-                    <p className="text-white font-semibold">
-                      {(
-                        parseFloat(amount) +
-                        (parseFloat(amount) * parseFloat(interest) * parseFloat(duration)) /
-                          (100 * 365)
-                      ).toFixed(4)}{" "}
-                      tCTC
-                    </p>
+                    <p className="text-gray-400">Borrower repays (estimated)</p>
+                    <p className="text-white font-semibold">{repayPreview} tCTC</p>
+                    <p className="text-gray-500">Your tCTC will be locked on post.</p>
                   </div>
                 )}
               </>
             )}
-          </div>
 
-          {/* Info note */}
-          {postType === "ask" && (
-            <p className="text-xs text-gray-500 bg-gray-800 rounded-lg p-3">
-              Post a borrow request. Lenders will see your credit score and decide whether to fund you.
-            </p>
-          )}
+            {postType === "borrow" && (
+              <p className="text-xs text-gray-500 bg-gray-800 rounded-lg p-3">
+                Lenders will see your credit score and send offers. You choose which to accept.
+              </p>
+            )}
+          </div>
 
           <button
             onClick={handlePost}
@@ -730,7 +832,8 @@ export default function MarketPage() {
               isPending ||
               isConfirming ||
               !amount ||
-              (postType === "bid" && (!interest || !duration))
+              !validDays ||
+              (postType === "lend" && (!apr || !duration))
             }
             className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-40 text-black font-bold py-2.5 rounded-lg transition-colors"
           >
@@ -740,9 +843,9 @@ export default function MarketPage() {
                 ? "Confirm in wallet..."
                 : isConfirming
                   ? "Processing..."
-                  : postType === "ask"
+                  : postType === "borrow"
                     ? "Post Borrow Request"
-                    : "Post Lend Offer"}
+                    : `Post Lend Offer (${amount || "0"} tCTC locked)`}
           </button>
         </div>
       </div>

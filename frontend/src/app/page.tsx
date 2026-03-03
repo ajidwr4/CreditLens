@@ -1,8 +1,6 @@
 "use client";
-
 import { useQuery } from "@apollo/client";
 import { GET_STATS, GET_LEADERBOARD } from "@/lib/ponder";
-import { ScoreGauge } from "@/components/score/ScoreGauge";
 import { getTierBg, shortenAddress, formatAmount } from "@/lib/utils";
 import Link from "next/link";
 
@@ -10,12 +8,12 @@ export default function Dashboard() {
   const { data: stats } = useQuery(GET_STATS);
   const { data: lb } = useQuery(GET_LEADERBOARD);
 
-  const deals = stats?.deals?.items || [];
-  const totalVolume = deals.reduce(
-    (acc: number, d: any) => acc + Number(d.amount || 0),
+  const loans = stats?.loans?.items || [];
+  const totalVolume = loans.reduce(
+    (acc: number, l: any) => acc + Number(l.principal || 0),
     0,
   );
-  const activeDeals = deals.filter((d: any) => d.status === "Active").length;
+  const activeLoans = loans.filter((l: any) => l.status === "Active").length;
   const leaderboard = lb?.creditScores?.items || [];
 
   return (
@@ -48,12 +46,9 @@ export default function Dashboard() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: "Total Loans", value: deals.length },
-          { label: "Active Deals", value: activeDeals },
-          {
-            label: "Total Volume",
-            value: `${formatAmount(totalVolume.toString())} tCTC`,
-          },
+          { label: "Total Loans",      value: loans.length },
+          { label: "Active Loans",     value: activeLoans },
+          { label: "Total Volume",     value: `${formatAmount(totalVolume.toString())} tCTC` },
           { label: "Scored Addresses", value: leaderboard.length },
         ].map((stat) => (
           <div

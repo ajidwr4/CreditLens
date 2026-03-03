@@ -8,10 +8,10 @@ export const ponderClient = new ApolloClient({
 // ─── Dashboard ───────────────────────────────────────────────
 export const GET_STATS = gql`
   query GetStats {
-    deals(limit: 1000) {
+    loans(limit: 1000) {
       items {
         id
-        amount
+        principal
         status
       }
     }
@@ -67,47 +67,57 @@ export const GET_CREDIT_SCORE = gql`
 // ─── Market page ─────────────────────────────────────────────
 export const GET_MARKET = gql`
   query GetMarket {
-    bidOrders(limit: 50) {
+    requests(limit: 50, orderBy: "createdAt", orderDirection: "desc") {
       items {
         id
-        orderId
-        lender
+        requestId
+        borrower
         amount
-        currency
-        interestRate
-        duration
+        validUntil
         status
         createdAt
       }
     }
-    askOrders(limit: 50) {
+    offers(limit: 200, orderBy: "createdAt", orderDirection: "desc") {
       items {
         id
-        orderId
-        borrower
+        offerId
+        requestId
+        lender
         amount
-        currency
+        aprBps
+        durationSecs
+        validUntil
         status
         createdAt
       }
     }
-    deals(limit: 100, orderBy: "startTime", orderDirection: "desc") {
+    publicOffers(limit: 50, orderBy: "createdAt", orderDirection: "desc") {
       items {
         id
-        dealId
-        bidId
-        askId
-        borrower
+        offerId
         lender
         amount
-        currency
-        interestRate
-        duration
-        startTime
-        deadline
-        repaymentDue
+        aprBps
+        durationSecs
+        validUntil
+        minCreditScore
+        status
+        createdAt
+      }
+    }
+    loans(limit: 100, orderBy: "createdAt", orderDirection: "desc") {
+      items {
+        id
+        loanId
+        borrower
+        lender
+        principal
+        repayDue
+        dueTime
         status
         repaidOnTime
+        createdAt
       }
     }
   }
