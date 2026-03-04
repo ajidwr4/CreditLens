@@ -24,7 +24,7 @@ function TierBadge({ tier }: { tier: string }) {
   );
 }
 
-//  badge untuk status offer
+// Badge for offer status in My Funded tab
 function OfferStatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
     Open:        "bg-blue-500/20 text-blue-400",
@@ -81,7 +81,7 @@ function ScoreCell({ address }: { address: string }) {
   );
 }
 
-//cap offer validUntil to req.validUntil — contract rejects if offer expiry > request expiry
+// Cap offer validUntil to req.validUntil — contract rejects if offer expiry > request expiry
 function FundModal({ req, onClose }: { req: any; onClose: () => void }) {
   const [aprInput, setAprInput]           = useState("");
   const [durationInput, setDurationInput] = useState("");
@@ -232,7 +232,6 @@ function TakeModal({ po, onClose }: { po: any; onClose: () => void }) {
   );
 }
 
-// "myfunded" added to Tab type
 type Tab      = "requests" | "public" | "myoffers" | "myfunded" | "loans";
 type PostType = "borrow"   | "lend";
 
@@ -252,9 +251,8 @@ export default function MarketPage() {
   const { writeContract, data: txHash, isPending } = useWriteContract();
   const { isLoading: isConfirming, isSuccess }     = useWaitForTransactionReceipt({ hash: txHash });
 
-  // read pending refund on-chain — banner only visible when > 0
-  // refetchInterval: 5000 — auto-poll for 5 second
-  //      (e.g. borrower accept offer) automatic detection without reloading
+  // Poll pending refund on-chain every 5s — used as source of truth for Withdraw/Withdrawn button state
+  // No banner; all refund actions are handled inside the My Funded tab
   const { data: pendingRefund, refetch: refetchRefund } = useReadContract({
     address: LENDING_MARKET_ADDRESS,
     abi: LENDING_MARKET_ABI,
@@ -292,23 +290,25 @@ export default function MarketPage() {
     (o: any) => o.status === "Open" && myOpenRequestIds.has(o.requestId.toString())
   );
 
-  // all offers sent by this wallet (as a lender), all statused
+  // All offers sent by this wallet as a lender, all statuses
   const myFundedOffers = allOffers.filter(
     (o: any) => o.lender?.toLowerCase() === address?.toLowerCase()
   );
 
-  // lookup map requestId → request, ufor My Funded tab
+  // Lookup map requestId → request for My Funded tab
   const requestMap = Object.fromEntries(
     allRequests.map((r: any) => [r.requestId.toString(), r])
   );
 
-  // count offer that require action - request have been matched but offers are still open
+  // Count offers that require action — request matched but offer still open
   const myfundedActionCount = myFundedOffers.filter((o: any) => {
     const req = requestMap[o.requestId.toString()];
     return o.status === "Open" && req?.status === "Matched";
   }).length;
 
   const activeLoans = allLoans.filter((l: any) => l.status === "Active");
+
+  const hasPendingRefund = pendingRefund !== undefined && pendingRefund > BigInt(0);
 
   async function handlePost() {
     if (!address || !amount || !validDays) return;
@@ -348,7 +348,7 @@ export default function MarketPage() {
   function handleRejectOffer(offer: any) {
     writeContract({ address: LENDING_MARKET_ADDRESS, abi: LENDING_MARKET_ABI, functionName: "rejectOffer", args: [BigInt(offer.offerId)] });
   }
-  // called by the lender when the request has been matched
+  // Called by lender when the request has been matched by another lender
   function handleInvalidateOffer(offer: any) {
     writeContract({ address: LENDING_MARKET_ADDRESS, abi: LENDING_MARKET_ABI, functionName: "invalidateOffer", args: [BigInt(offer.offerId)] });
   }
@@ -364,14 +364,12 @@ export default function MarketPage() {
     { key: "requests", label: `Requests (${openRequests.length})`          },
     { key: "public",   label: `Public Offers (${openPublicOffers.length})` },
     { key: "myoffers", label: `My Offers (${myInboxOffers.length})`        },
-    // "My Funded" — the label changes to a warning if there is an offer that needs to be invalidated
+    // Label changes to warning if there are offers that need to be invalidated
     { key: "myfunded", label: myfundedActionCount > 0
         ? `My Funded ⚠ ${myfundedActionCount}`
         : `My Funded (${myFundedOffers.length})` },
     { key: "loans",    label: `Active Loans (${activeLoans.length})`       },
   ];
-
-  const hasPendingRefund = pendingRefund !== undefined && pendingRefund > BigInt(0);
 
   return (
     <div className="space-y-6">
@@ -379,25 +377,6 @@ export default function MarketPage() {
       {takeTarget && <TakeModal po={takeTarget}  onClose={() => { setTakeTarget(null); setTimeout(() => refetch(), 3000); }} />}
 
       <h1 className="text-2xl font-bold text-white">Lending Market</h1>
-
-      {/* Pending Refund Banner — auto-poll 5s, if > 0 */}
-      {address && hasPendingRefund && (
-        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4 flex items-center justify-between gap-4">
-          <div>
-            <p className="text-yellow-400 text-sm font-semibold">Pending Refund</p>
-            <p className="text-white text-sm font-bold mt-0.5">
-              {formatAmount(pendingRefund!.toString())} tCTC available to withdraw
-            </p>
-          </div>
-          <button
-            onClick={handleWithdrawRefund}
-            disabled={isPending || isConfirming}
-            className="shrink-0 px-4 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/30 text-yellow-400 text-sm font-semibold rounded-lg transition-colors disabled:opacity-40"
-          >
-            {isPending ? "Confirming..." : "Withdraw"}
-          </button>
-        </div>
-      )}
 
       <div className="grid md:grid-cols-3 gap-6">
         <div className="md:col-span-2 bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
@@ -561,15 +540,14 @@ export default function MarketPage() {
             </div>
           )}
 
-          {/* ── My Funded Tab (lender view) ───────────────────────────────────
-               Display all offers sent by this wallet as a lender.
-              If the offer is still Open but the request has been Matched 
-              (the borrower chose someone else) → display the Invalidate button 
-              so that the lender can unlock their tCTC to pendingRefunds and then WD..                                                                                                                                             
-               */}
-          
+          {/* ── My Funded Tab (lender view) ──────────────────────────────────
+               Shows all offers sent by this wallet as a lender.
+               - Open + request Matched → Invalidate (moves tCTC to pendingRefunds)
+               - Rejected or Invalidated + pendingRefund > 0 → Withdraw (yellow)
+               - Rejected or Invalidated + pendingRefund == 0 → Withdrawn (gray)
+               pendingRefund is the single source of truth, accurate after refresh. */}
           {tab === "myfunded" && !loading && (
-            <div className="overflow-x-auto">                                
+            <div className="overflow-x-auto">
               {!address
                 ? <p className="text-gray-500 text-sm p-6">Connect wallet to see your funded offers.</p>
                 : myFundedOffers.length === 0
@@ -578,8 +556,8 @@ export default function MarketPage() {
                 <>
                   {myfundedActionCount > 0 && (
                     <div className="mx-4 mt-4 mb-2 bg-orange-500/10 border border-orange-500/20 rounded-lg p-3 text-xs text-orange-400">
-                      ⚠ {myfundedActionCount} offer{myfundedActionCount > 1 ? "s" : ""} perlu diinvalidate — borrower memilih lender lain.
-                      Klik <strong>Invalidate</strong> untuk unlock tCTC kamu ke pending refund, lalu klik Withdraw di banner atas.
+                      ⚠ {myfundedActionCount} offer{myfundedActionCount > 1 ? "s were" : " was"} not selected — the borrower chose another lender.
+                      Click <strong>Invalidate</strong> to unlock your tCTC, then click <strong>Withdraw</strong> to reclaim it.
                     </div>
                   )}
                   <table className="w-full text-sm">
@@ -598,6 +576,8 @@ export default function MarketPage() {
                       {myFundedOffers.map((offer: any) => {
                         const req            = requestMap[offer.requestId.toString()];
                         const needInvalidate = offer.status === "Open" && req?.status === "Matched";
+                        const canWithdraw    = (offer.status === "Rejected" || offer.status === "Invalidated") && hasPendingRefund;
+                        const withdrawn      = (offer.status === "Rejected" || offer.status === "Invalidated") && !hasPendingRefund;
                         return (
                           <tr key={offer.id} className={`hover:bg-gray-800/40 transition-colors ${needInvalidate ? "bg-orange-500/5" : ""}`}>
                             <td className="px-4 py-3 font-mono text-gray-300">
@@ -622,6 +602,7 @@ export default function MarketPage() {
                               </span>
                             </td>
                             <td className="px-4 py-3 text-right">
+                              {/* Step 1 — borrower chose someone else, unlock tCTC first */}
                               {needInvalidate && (
                                 <button
                                   onClick={() => handleInvalidateOffer(offer)}
@@ -631,11 +612,21 @@ export default function MarketPage() {
                                   Invalidate
                                 </button>
                               )}
-                              {offer.status === "Invalidated" && (
-                                <span className="text-xs text-gray-500">Refund pending WD</span>
+                              {/* Step 2 / Flow 1 — tCTC is in pendingRefunds, ready to claim */}
+                              {canWithdraw && (
+                                <button
+                                  onClick={handleWithdrawRefund}
+                                  disabled={isPending || isConfirming}
+                                  className="px-3 py-1.5 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/30 text-yellow-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
+                                >
+                                  Withdraw
+                                </button>
                               )}
-                              {offer.status === "Rejected" && (
-                                <span className="text-xs text-gray-500">Refund pending WD</span>
+                              {/* Already withdrawn — pendingRefund is 0 */}
+                              {withdrawn && (
+                                <span className="px-3 py-1.5 bg-gray-500/10 border border-gray-700 text-gray-500 text-xs font-semibold rounded-lg">
+                                  Withdrawn
+                                </span>
                               )}
                             </td>
                           </tr>
