@@ -541,11 +541,10 @@ export default function MarketPage() {
           )}
 
           {/* ── My Funded Tab (lender view) ──────────────────────────────────
-               Shows all offers sent by this wallet as a lender.
-               - Open + request Matched → Invalidate (moves tCTC to pendingRefunds)
-               - Rejected or Invalidated + pendingRefund > 0 → Withdraw (yellow)
-               - Rejected or Invalidated + pendingRefund == 0 → Withdrawn (gray)
-               pendingRefund is the single source of truth, accurate after refresh. */}
+               Shows all offers sent by this wallet as a lender (all statuses).
+               Action column only shows Invalidate when offer is Open + request Matched.
+               A single Withdraw banner appears at the top when pendingRefund > 0.
+               pendingRefund is the single source of truth — accurate after page refresh. */}
           {tab === "myfunded" && !loading && (
             <div className="overflow-x-auto">
               {!address
@@ -554,10 +553,29 @@ export default function MarketPage() {
                   ? <p className="text-gray-500 text-sm p-6">You have not funded any requests yet.</p>
                   : (
                 <>
+                  {/* Single withdraw banner — shown when any refund is available */}
+                  {hasPendingRefund && (
+                    <div className="mx-4 mt-4 mb-2 bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-yellow-400 text-xs font-semibold">Refund Available</p>
+                        <p className="text-white text-xs font-bold mt-0.5">
+                          {formatAmount(pendingRefund!.toString())} tCTC ready to withdraw
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleWithdrawRefund}
+                        disabled={isPending || isConfirming}
+                        className="shrink-0 px-3 py-1.5 bg-yellow-500/20 hover:bg-yellow-500/30 border border-yellow-500/30 text-yellow-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
+                      >
+                        {isPending ? "Confirming..." : "Withdraw"}
+                      </button>
+                    </div>
+                  )}
+                  {/* Invalidate warning — shown when offers need action */}
                   {myfundedActionCount > 0 && (
-                    <div className="mx-4 mt-4 mb-2 bg-orange-500/10 border border-orange-500/20 rounded-lg p-3 text-xs text-orange-400">
+                    <div className="mx-4 mt-2 mb-2 bg-orange-500/10 border border-orange-500/20 rounded-lg p-3 text-xs text-orange-400">
                       ⚠ {myfundedActionCount} offer{myfundedActionCount > 1 ? "s were" : " was"} not selected — the borrower chose another lender.
-                      Click <strong>Invalidate</strong> to unlock your tCTC, then click <strong>Withdraw</strong> to reclaim it.
+                      Click <strong>Invalidate</strong> to unlock your tCTC, then withdraw using the banner above.
                     </div>
                   )}
                   <table className="w-full text-sm">
@@ -576,8 +594,6 @@ export default function MarketPage() {
                       {myFundedOffers.map((offer: any) => {
                         const req            = requestMap[offer.requestId.toString()];
                         const needInvalidate = offer.status === "Open" && req?.status === "Matched";
-                        const canWithdraw    = (offer.status === "Rejected" || offer.status === "Invalidated") && hasPendingRefund;
-                        const withdrawn      = (offer.status === "Rejected" || offer.status === "Invalidated") && !hasPendingRefund;
                         return (
                           <tr key={offer.id} className={`hover:bg-gray-800/40 transition-colors ${needInvalidate ? "bg-orange-500/5" : ""}`}>
                             <td className="px-4 py-3 font-mono text-gray-300">
@@ -602,7 +618,7 @@ export default function MarketPage() {
                               </span>
                             </td>
                             <td className="px-4 py-3 text-right">
-                              {/* Step 1 — borrower chose someone else, unlock tCTC first */}
+                              {/* Borrower chose another lender — invalidate to unlock tCTC */}
                               {needInvalidate && (
                                 <button
                                   onClick={() => handleInvalidateOffer(offer)}
@@ -611,22 +627,6 @@ export default function MarketPage() {
                                 >
                                   Invalidate
                                 </button>
-                              )}
-                              {/* Step 2 / Flow 1 — tCTC is in pendingRefunds, ready to claim */}
-                              {canWithdraw && (
-                                <button
-                                  onClick={handleWithdrawRefund}
-                                  disabled={isPending || isConfirming}
-                                  className="px-3 py-1.5 bg-yellow-500/10 hover:bg-yellow-500/20 border border-yellow-500/30 text-yellow-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40"
-                                >
-                                  Withdraw
-                                </button>
-                              )}
-                              {/* Already withdrawn — pendingRefund is 0 */}
-                              {withdrawn && (
-                                <span className="px-3 py-1.5 bg-gray-500/10 border border-gray-700 text-gray-500 text-xs font-semibold rounded-lg">
-                                  Withdrawn
-                                </span>
                               )}
                             </td>
                           </tr>
