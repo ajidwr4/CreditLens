@@ -10,7 +10,8 @@ const navLinks = [
   { href: "/score", label: "Credit Score" },
   { href: "/market", label: "Market" },
   { href: "/leaderboard", label: "Leaderboard" },
-  { href: "/rwc", label: "Real World Credit" },
+  { href: "/real-world-credit", label: "Real World Credit" },
+  { href: "/real-world-records", label: "Credit Records" },
 ];
 
 export function Header() {
