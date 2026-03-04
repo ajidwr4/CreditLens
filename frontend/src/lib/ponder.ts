@@ -161,3 +161,28 @@ export const GET_REAL_WORLD_RECORDS = gql`
     }
   }
 `;
+// ─── Real World Records page (all records, public view) ──────
+export const GET_ALL_REAL_WORLD_RECORDS = gql`
+  query GetAllRealWorldRecords {
+    realWorldRecords(
+      where: { isDeleted: false }
+      limit: 200
+      orderBy: "mintedAt"
+      orderDirection: "desc"
+    ) {
+      items {
+        id
+        recordId
+        borrower
+        issuerWallet
+        issuerName
+        amount
+        currency
+        category
+        repaidOnTime
+        evidenceNote
+        mintedAt
+      }
+    }
+  }
+`;
