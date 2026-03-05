@@ -1,6 +1,6 @@
 import { createConfig } from "ponder";
 import { http } from "viem";
-import { LendingMarketABI } from "./abis/LendingMarketABI";
+import { LendingMarketV3ABI } from "./abis/LendingMarketV3ABI";
 import { RealWorldCreditABI } from "./abis/RealWorldCreditABI";
 
 export default createConfig({
@@ -13,9 +13,9 @@ export default createConfig({
   contracts: {
     LendingMarket: {
       chain: "creditcoin",
-      abi: LendingMarketABI,
-      address: "0x7c686DBA61c5F5C7C30ae53b6E9D9965b96BB542", // v2 — deployed 28 Feb 2026
-      startBlock: 4345004, 
+      abi: LendingMarketV3ABI,
+      address: "0xDD98f9D3aDC99e07A473bED4E396736d13117128", // v3
+      startBlock: 4360000,
     },
     RealWorldCredit: {
       chain: "creditcoin",

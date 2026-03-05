@@ -7,7 +7,7 @@ ponder/node_modules/
 frontend/.next/
 frontend/out/
 
-# Environment variables (JANGAN PERNAH PUSH INI)
+# Environment variables 
 .env
 .env.local
 frontend/.env
