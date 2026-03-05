@@ -161,37 +161,37 @@ Scores range from **0 to 1000**, composed of two components:
 ## 📁 Project Structure
 
 ```
-CreditLens/
-├── contracts/
-│   ├── LendingMarket.sol          # Core lending: requests, offers, loans
-│   ├── RealWorldCredit.sol        # Mint & manage real-world credit records
-│   └── CreditScoreOracle.sol      # Compute & store credit scores on-chain
-├── ponder/
-│   ├── abis/                      # Contract ABI files
-│   ├── generated/                 # Auto-generated Ponder types
-│   ├── src/
-│   │   ├── api/
-│   │   │   └── index.ts           # Custom API endpoints
-│   │   ├── index.ts               # Event handlers (LendingMarket + RWC)
-│   │   ├── pusher.ts              # Real-time push notifications
-│   │   └── scorer.ts              # Credit score computation logic
-│   ├── ponder.config.ts           # Indexer config & contract addresses
-│   └── ponder.schema.ts           # Database schema
-├── frontend/
-│   └── src/
-│       ├── app/
-│       │   ├── page.tsx                   # Dashboard
-│       │   ├── score/                     # Credit Score lookup
-│       │   ├── market/                    # Lending Market
-│       │   ├── leaderboard/               # Score leaderboard
-│       │   ├── rwc/                       # Mint real-world credit
-│       │   └── real-world-records/        # Public credit records explorer
-│       ├── components/
-│       │   └── Header.tsx
-│       └── lib/
-│           ├── contracts.ts               # ABIs + addresses
-│           └── ponder.ts                  # GraphQL queries
-└── README.md
+📁 CreditLens/
+├── 📁 contracts/
+│   ├── 📄 LendingMarket.sol          # Core lending: requests, offers, loans
+│   ├── 📄 RealWorldCredit.sol        # Mint & manage real-world credit records
+│   └── 📄 CreditScoreOracle.sol      # Compute & store credit scores on-chain
+├── 📁 frontend/
+│   └── 📁 src/
+│       ├── 📁 app/
+│       │   ├── 📄 page.tsx                   # Dashboard
+│       │   ├── 📁 score/                     # Credit Score lookup
+│       │   ├── 📁 market/                    # Lending Market
+│       │   ├── 📁 leaderboard/               # Score leaderboard
+│       │   ├── 📁 rwc/                       # Mint real-world credit
+│       │   └── 📁 real-world-records/        # Public credit records explorer
+│       ├── 📁 components/
+│       │   └── 📄 Header.tsx
+│       └── 📁 lib/
+│           ├── 📄 contracts.ts               # ABIs + addresses
+│           └── 📄 ponder.ts                  # GraphQL queries
+├── 📁 ponder/
+│   ├── 📁 abis/                      # Contract ABI files
+│   ├── 📁 generated/                 # Auto-generated Ponder types
+│   ├── 📁 src/
+│   │   ├── 📁 api/
+│   │   │   └── 📄 index.ts           # Custom API endpoints
+│   │   ├── 📄 index.ts               # Event handlers (LendingMarket + RWC)
+│   │   ├── 📄 pusher.ts              # Real-time push notifications
+│   │   └── 📄 scorer.ts              # Credit score computation logic
+│   ├── 📄 ponder.config.ts           # Indexer config & contract addresses
+│   └── 📄 ponder.schema.ts           # Database schema
+└── 📄 README.md
 ```
 
 ---
