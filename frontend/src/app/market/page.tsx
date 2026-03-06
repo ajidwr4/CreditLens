@@ -237,6 +237,13 @@ type PostType = "borrow"   | "lend";
 
 export default function MarketPage() {
   const { address } = useAccount();
+
+  const { data: myScoreData } = useQuery(GET_CREDIT_SCORE, {
+    variables: { address: address?.toLowerCase() },
+    skip: !address,
+  });
+  const myScore = myScoreData?.creditScore?.totalScore ?? 0;
+
   const [tab, setTab]               = useState<Tab>("requests");
   const [postType, setPostType]     = useState<PostType>("borrow");
   const [fundTarget, setFundTarget] = useState<any>(null);
@@ -445,7 +452,7 @@ export default function MarketPage() {
             </div>
           )}
 
-          {/* ── Public Offers Tab ────────────────────── */}
+         {/* ── Public Offers Tab ────────────────────── */}
           {tab === "public" && !loading && (
             <div className="overflow-x-auto">
               {openPublicOffers.length === 0 ? <p className="text-gray-500 text-sm p-6">No open public offers.</p> : (
@@ -464,6 +471,7 @@ export default function MarketPage() {
                   <tbody className="divide-y divide-gray-800">
                     {openPublicOffers.map((po: any) => {
                       const isOwn = po.lender?.toLowerCase() === address?.toLowerCase();
+                      const scoreTooLow = myScore < Number(po.minCreditScore);
                       return (
                         <tr key={po.id} className="hover:bg-gray-800/40 transition-colors">
                           <td className="px-4 py-3 font-mono text-gray-300">
@@ -477,7 +485,18 @@ export default function MarketPage() {
                           <td className="px-4 py-3 text-right text-gray-400 text-xs">{formatDeadline(po.validUntil)}</td>
                           <td className="px-4 py-3 text-right">
                             {!isOwn && address && (
-                              <button onClick={() => setTakeTarget(po)} className="px-3 py-1.5 bg-green-500/10 hover:bg-green-500/20 border border-green-500/30 text-green-400 text-xs font-semibold rounded-lg transition-colors">Take</button>
+                              <button
+                                onClick={() => !scoreTooLow && setTakeTarget(po)}
+                                disabled={scoreTooLow}
+                                title={scoreTooLow ? `Requires min score ${po.minCreditScore}` : ""}
+                                className={`px-3 py-1.5 border text-xs font-semibold rounded-lg transition-colors ${
+                                  scoreTooLow
+                                    ? "bg-gray-500/10 border-gray-500/30 text-gray-500 cursor-not-allowed opacity-50"
+                                    : "bg-green-500/10 hover:bg-green-500/20 border-green-500/30 text-green-400"
+                                }`}
+                              >
+                                {scoreTooLow ? "Score too low" : "Take"}
+                              </button>
                             )}
                             {isOwn && (
                               <button onClick={() => handleCancelPubOffer(po)} disabled={isPending || isConfirming} className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-semibold rounded-lg transition-colors disabled:opacity-40">Cancel</button>
