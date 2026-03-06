@@ -163,7 +163,7 @@ Scores range from **0 to 1000**, composed of two components:
 ```
 📁 CreditLens/
 ├── 📁 contracts/
-│   ├── 📄 LendingMarket.sol          # Core lending: requests, offers, loans
+│   ├── 📄 LendingMarketV3.sol        # Core lending: requests, offers, loans
 │   ├── 📄 RealWorldCredit.sol        # Mint & manage real-world credit records
 │   └── 📄 CreditScoreOracle.sol      # Compute & store credit scores on-chain
 ├── 📁 frontend/
