@@ -7,7 +7,7 @@ Built for the **[BUIDL CTC Hackathon](https://dorahacks.io/hackathon/buidl-ctc)*
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat&logo=typescript&logoColor=white)
 ![Solidity](https://img.shields.io/badge/Solidity-363636?style=flat&logo=solidity&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat&logo=nextdotjs&logoColor=white)
-![Creditcoin](https://img.shields.io/badge/Creditcoin-Testnet-green?style=flat)
+![GraphQL](https://img.shields.io/badge/GraphQL-E10098?style=flat&logo=graphql&logoColor=white)
 
 ---
 
@@ -148,7 +148,7 @@ Scores range from **0 to 1000**, composed of two components:
 
 | Layer | Technology |
 |---|---|
-| Smart Contracts | Solidity 0.8.x, Hardhat |
+| Smart Contracts | Solidity 0.8.x, Remix IDE |
 | Indexer | Ponder |
 | Frontend | Next.js 15.5.x, TypeScript |
 | Wallet | Wagmi v2, RainbowKit |
@@ -160,7 +160,7 @@ Scores range from **0 to 1000**, composed of two components:
 
 ## 📁 Project Structure
 
-```text
+```
 📁 CreditLens/
 ├── 📁 contracts/
 │   ├── 📄 LendingMarket.sol              # Core lending: requests, offers, loans
@@ -194,7 +194,7 @@ Scores range from **0 to 1000**, composed of two components:
 │   ├── 📄 ponder.config.ts               # Indexer config & contract addresses
 │   └── 📄 ponder.schema.ts               # Database schema
 └── 📄 README.md
-
+```
 
 ---
 
@@ -212,7 +212,7 @@ Scores range from **0 to 1000**, composed of two components:
 
 | Contract | Address |
 |---|---|
-| LendingMarket v3 | [`0xDD98f9D3aDC99e07A473bED4E396736d13117128`](https://creditcoin-testnet.blockscout.com/address/0xDD98f9D3aDC99e07A473bED4E396736d13117128) |
+| LendingMarket   | [`0x2Fe54EA017dbe57BADAf58b9AddBa8C6005132Ac`](https://creditcoin-testnet.blockscout.com/address/0x2Fe54EA017dbe57BADAf58b9AddBa8C6005132Ac) |
 | RealWorldCredit | [`0xB6A2331289F2BeB040eF29bd1932f15Ae4f3771a`](https://creditcoin-testnet.blockscout.com/address/0xB6A2331289F2BeB040eF29bd1932f15Ae4f3771a) |
 | CreditScoreOracle | [`0xd908cb092578137b1642E84c830437a51428B874`](https://creditcoin-testnet.blockscout.com/address/0xd908cb092578137b1642E84c830437a51428B874) |
 
@@ -260,7 +260,7 @@ cd CreditLens
 ```bash
 cd ponder
 cp .env.example .env
-# Fill in: PONDER_RPC_URL=https://rpc.cc3-testnet.creditcoin.network
+# Fill in: PONDER_RPC_URL_102031=https://rpc.cc3-testnet.creditcoin.network
 npm install
 npm run dev
 # GraphQL available at http://localhost:42069
