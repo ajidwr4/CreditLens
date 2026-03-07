@@ -160,39 +160,41 @@ Scores range from **0 to 1000**, composed of two components:
 
 ## 📁 Project Structure
 
-```
+```text
 📁 CreditLens/
 ├── 📁 contracts/
-│   ├── 📄 LendingMarket.sol        # Core lending: requests, offers, loans
-│   ├── 📄 RealWorldCredit.sol        # Mint & manage real-world credit records
-│   └── 📄 CreditScoreOracle.sol      # Compute & store credit scores on-chain
+│   ├── 📄 LendingMarket.sol              # Core lending: requests, offers, loans
+│   ├── 📄 RealWorldCredit.sol            # Mint & manage real-world credit records
+│   └── 📄 CreditScoreOracle.sol          # Compute & store credit scores on-chain
 ├── 📁 frontend/
+│   ├── 📄 .env.example                   # Frontend environment variables template
 │   └── 📁 src/
 │       ├── 📁 app/
-│       │   ├── 📄 page.tsx                   # Dashboard
-│       │   ├── 📁 score/                     # Credit Score lookup
-│       │   ├── 📁 market/                    # Lending Market
-│       │   ├── 📁 leaderboard/               # Score leaderboard
-│       │   ├── 📁 rwc/                       # Mint real-world credit
-│       │   └── 📁 real-world-records/        # Public credit records explorer
+│       │   ├── 📄 page.tsx               # Dashboard
+│       │   ├── 📁 score/                 # Credit Score lookup
+│       │   ├── 📁 market/                # Lending Market
+│       │   ├── 📁 leaderboard/           # Score leaderboard
+│       │   ├── 📁 rwc/                   # Mint real-world credit
+│       │   └── 📁 real-world-records/    # Public credit records explorer
 │       ├── 📁 components/
 │       │   └── 📄 Header.tsx
 │       └── 📁 lib/
-│           ├── 📄 contracts.ts               # ABIs + addresses
-│           └── 📄 ponder.ts                  # GraphQL queries
+│           ├── 📄 contracts.ts           # ABIs + addresses
+│           └── 📄 ponder.ts              # GraphQL queries
 ├── 📁 ponder/
-│   ├── 📁 abis/                      # Contract ABI files
-│   ├── 📁 generated/                 # Auto-generated Ponder types
+│   ├── 📄 .env.example                   # Indexer and pusher environment variables template
+│   ├── 📁 abis/                          # Contract ABI files
+│   ├── 📁 generated/                     # Auto-generated Ponder types
 │   ├── 📁 src/
 │   │   ├── 📁 api/
-│   │   │   └── 📄 index.ts           # Custom API endpoints
-│   │   ├── 📄 index.ts               # Event handlers (LendingMarket + RWC)
-│   │   ├── 📄 pusher.ts              # Real-time push notifications
-│   │   └── 📄 scorer.ts              # Credit score computation logic
-│   ├── 📄 ponder.config.ts           # Indexer config & contract addresses
-│   └── 📄 ponder.schema.ts           # Database schema
+│   │   │   └── 📄 index.ts               # Custom API endpoints
+│   │   ├── 📄 index.ts                   # Event handlers (LendingMarket + RWC)
+│   │   ├── 📄 pusher.ts                  # Real-time push notifications
+│   │   └── 📄 scorer.ts                  # Credit score computation logic
+│   ├── 📄 ponder.config.ts               # Indexer config & contract addresses
+│   └── 📄 ponder.schema.ts               # Database schema
 └── 📄 README.md
-```
+
 
 ---
 
@@ -258,7 +260,7 @@ cd CreditLens
 ```bash
 cd ponder
 cp .env.example .env
-# Fill in: PONDER_RPC_URL_102031=https://rpc.cc3-testnet.creditcoin.network
+# Fill in: PONDER_RPC_URL=https://rpc.cc3-testnet.creditcoin.network
 npm install
 npm run dev
 # GraphQL available at http://localhost:42069
