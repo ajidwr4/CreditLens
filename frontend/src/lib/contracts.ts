@@ -1,6 +1,6 @@
 // ─── Contract Addresses ───────────────────────────────────────
 export const LENDING_MARKET_ADDRESS =
-  "0xDD98f9D3aDC99e07A473bED4E396736d13117128" as `0x${string}`; // v3
+  "0x2Fe54EA017dbe57BADAf58b9AddBa8C6005132Ac" as `0x${string}`; // v4
 
 export const REAL_WORLD_CREDIT_ADDRESS =
   "0xB6A2331289F2BeB040eF29bd1932f15Ae4f3771a" as `0x${string}`;
@@ -8,7 +8,7 @@ export const REAL_WORLD_CREDIT_ADDRESS =
 export const CREDIT_SCORE_ORACLE_ADDRESS =
   "0xd908cb092578137b1642E84c830437a51428B874" as `0x${string}`;
 
-// ─── LendingMarket v3 ABI ─────────────────────────────────────
+// ─── LendingMarket v4 ABI ─────────────────────────────────────
 export const LENDING_MARKET_ABI = [
   { inputs: [{ internalType: "address", name: "_oracle", type: "address" }], stateMutability: "nonpayable", type: "constructor" },
 
@@ -413,12 +413,32 @@ export const REAL_WORLD_CREDIT_ABI = [
   },
 ] as const;
 
-// ─── CreditScoreOracle ABI ───────────────────────────────────
+// ─── CreditScoreOracle ABI ────────────────────────────────────
+// getScore() returns the full ScoreData struct — mirrors CreditScoreOracle.sol
 export const CREDIT_SCORE_ORACLE_ABI = [
   {
     inputs: [{ internalType: "address", name: "borrower", type: "address" }],
     name: "getScore",
-    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
+    outputs: [
+      {
+        internalType: "tuple",
+        name: "",
+        type: "tuple",
+        components: [
+          { internalType: "address", name: "borrower",             type: "address" },
+          { internalType: "uint256", name: "totalScore",           type: "uint256" },
+          { internalType: "uint256", name: "onChainScore",         type: "uint256" },
+          { internalType: "uint256", name: "realWorldScore",       type: "uint256" },
+          { internalType: "string",  name: "tier",                 type: "string"  },
+          { internalType: "uint256", name: "totalLoans",           type: "uint256" },
+          { internalType: "uint256", name: "repaidOnTime",         type: "uint256" },
+          { internalType: "uint256", name: "repaidLate",           type: "uint256" },
+          { internalType: "uint256", name: "defaulted",            type: "uint256" },
+          { internalType: "uint256", name: "totalRealWorldRecords",type: "uint256" },
+          { internalType: "uint256", name: "lastUpdated",          type: "uint256" },
+        ],
+      },
+    ],
     stateMutability: "view",
     type: "function",
   },

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-/// @title  LendingMarket v3 — Non-collateral P2P lending on Creditcoin
+/// @title  LendingMarket v4 — Non-collateral P2P lending on Creditcoin
 /// @notice Three mechanisms:
 ///         A) Borrower posts Request → Lenders fund Offers → Borrower accepts/rejects
 ///         B) Lender posts Public Offer (with min credit score gate) → First qualified borrower takes it (FCFS)
@@ -11,9 +11,31 @@ pragma solidity ^0.8.26;
 ///         Escrow is held inside this contract — no separate Vault.
 ///         Refunds use withdrawal pattern via pendingRefunds mapping.
 ///         Oracle (CreditScoreOracle) is queried on-chain for Mechanism B gating.
+///
+/// @dev    v4 fix: ICreditScoreOracle.getScore() now correctly returns ScoreData memory
+///         (struct) instead of uint256. takeOffer() reads .totalScore from the returned
+///         struct. This resolves the ABI mismatch that caused ScoreTooLow on every call.
 
 interface ICreditScoreOracle {
-    function getScore(address borrower) external view returns (uint256);
+    /// @dev Mirror of CreditScoreOracle.ScoreData — only fields needed by LendingMarket.
+    ///      Must stay in sync with CreditScoreOracle.sol if that struct ever changes.
+    struct ScoreData {
+        address borrower;
+        uint256 totalScore;
+        uint256 onChainScore;
+        uint256 realWorldScore;
+        string  tier;
+        uint256 totalLoans;
+        uint256 repaidOnTime;
+        uint256 repaidLate;
+        uint256 defaulted;
+        uint256 totalRealWorldRecords;
+        uint256 lastUpdated;
+    }
+
+    /// @notice Returns the full ScoreData struct for a borrower.
+    /// @dev    LendingMarket only reads .totalScore for the Mechanism B gate.
+    function getScore(address borrower) external view returns (ScoreData memory);
 }
 
 contract LendingMarket {
@@ -474,7 +496,11 @@ contract LendingMarket {
     /// @notice Borrower takes a public offer if their credit score meets the minimum
     /// @dev    Score is checked real-time via oracle at moment of call (no grace period).
     ///         FCFS — first qualified borrower wins.
-    /// @param offerId  ID of the public offer to take
+    ///         v4 fix: reads .totalScore from the ScoreData struct returned by oracle.getScore()
+    ///         v4 fix: reads .totalScore from the ScoreData struct returned by oracle.getScore().
+    ///         This resolves the interface / ABI mismatch with CreditScoreOracle.
+     
+     /// @param offerId  ID of the public offer to take
     /// @return loanId
     function takeOffer(uint256 offerId) external nonReentrant returns (uint256 loanId) {
         PublicOffer storage po = publicOffers[offerId];
@@ -484,7 +510,8 @@ contract LendingMarket {
         if (po.lender == msg.sender)                  revert CannotSelfDeal();
 
         // ── Credit score gate (real-time oracle check) ────────────
-        uint256 score = oracle.getScore(msg.sender);
+        // getScore() returns a ScoreData struct; we only need .totalScore for the gate.
+        uint256 score = oracle.getScore(msg.sender).totalScore;
         if (score < po.minCreditScore)                revert ScoreTooLow();
 
         // ── Calculate repayDue ────────────────────────────────────

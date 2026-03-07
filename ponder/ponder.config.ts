@@ -14,8 +14,8 @@ export default createConfig({
     LendingMarket: {
       chain: "creditcoin",
       abi: LendingMarketV3ABI,
-      address: "0xDD98f9D3aDC99e07A473bED4E396736d13117128", // v3
-      startBlock: 4360000,
+      address: "0x2Fe54EA017dbe57BADAf58b9AddBa8C6005132Ac", // v4
+      startBlock: 4360000, // same as v3 — keeps all historical events indexed
     },
     RealWorldCredit: {
       chain: "creditcoin",
