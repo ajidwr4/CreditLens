@@ -3,19 +3,25 @@ import { http } from "viem";
 import { LendingMarketV3ABI } from "./abis/LendingMarketV3ABI";
 import { RealWorldCreditABI } from "./abis/RealWorldCreditABI";
 
+const rpcUrl = process.env.PONDER_RPC_URL;
+
+if (!rpcUrl) {
+  throw new Error("Missing required env: PONDER_RPC_URL");
+}
+
 export default createConfig({
   chains: {
     creditcoin: {
       id: 102031,
-      rpc: http(process.env.PONDER_RPC_URL ?? "https://rpc.cc3-testnet.creditcoin.network"),
+      rpc: http(rpcUrl),
     },
   },
   contracts: {
     LendingMarket: {
       chain: "creditcoin",
       abi: LendingMarketV3ABI,
-      address: "0xDD98f9D3aDC99e07A473bED4E396736d13117128", // v3
-      startBlock: 4360000,
+      address: "0x2Fe54EA017dbe57BADAf58b9AddBa8C6005132Ac",
+      startBlock: 4360000, // same as v3 — keeps all historical events indexed
     },
     RealWorldCredit: {
       chain: "creditcoin",

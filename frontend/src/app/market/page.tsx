@@ -238,6 +238,18 @@ type PostType = "borrow"   | "lend";
 export default function MarketPage() {
   const { address } = useAccount();
 
+  // ── Hydration guard ───────────────────────────────────────────
+  // mounted: prevents SSR/client mismatch on wallet-dependent renders.
+  // nowSecs: initialized to 0 on server, set to real timestamp after mount
+  //          to avoid isOverdue/isExpired mismatch between SSR and client.
+  const [mounted, setMounted]   = useState(false);
+  const [nowSecs, setNowSecs]   = useState(0);
+
+  useEffect(() => {
+    setMounted(true);
+    setNowSecs(Math.floor(Date.now() / 1000));
+  }, []);
+
   const { data: myScoreData } = useQuery(GET_CREDIT_SCORE, {
     variables: { address: address?.toLowerCase() },
     skip: !address,
@@ -254,7 +266,8 @@ export default function MarketPage() {
   const [validDays, setValidDays]   = useState("7");
   const [minScore, setMinScore]     = useState("0");
 
-  const { data, loading, refetch }                 = useQuery(GET_MARKET);
+  // Poll every 5s so the market table stays up-to-date without a manual refresh
+  const { data, loading, refetch }                 = useQuery(GET_MARKET, { pollInterval: 5000 });
   const { writeContract, data: txHash, isPending } = useWriteContract();
   const { isLoading: isConfirming, isSuccess }     = useWaitForTransactionReceipt({ hash: txHash });
 
@@ -277,8 +290,6 @@ export default function MarketPage() {
       setTimeout(() => { refetch(); refetchRefund(); }, 3000);
     }
   }, [isSuccess]);
-
-  const nowSecs = Math.floor(Date.now() / 1000);
 
   const allRequests     = data?.requests?.items     ?? [];
   const allOffers       = data?.offers?.items        ?? [];
@@ -532,7 +543,8 @@ export default function MarketPage() {
                   </thead>
                   <tbody className="divide-y divide-gray-800">
                     {myInboxOffers.map((offer: any) => {
-                      const isExpired = nowSecs > Number(offer.validUntil);
+                      // nowSecs is 0 on SSR — safe default: no offer appears expired until client hydrates
+                      const isExpired = nowSecs > 0 && nowSecs > Number(offer.validUntil);
                       return (
                         <tr key={offer.id} className="hover:bg-gray-800/40 transition-colors">
                           <td className="px-4 py-3 font-mono text-gray-300">{shortenAddress(offer.lender)}</td>
@@ -678,7 +690,8 @@ export default function MarketPage() {
                   <tbody className="divide-y divide-gray-800">
                     {allLoans.map((loan: any) => {
                       const isBorrower = loan.borrower?.toLowerCase() === address?.toLowerCase();
-                      const isOverdue  = nowSecs > Number(loan.dueTime) && loan.status === "Active";
+                      // nowSecs is 0 on SSR — safe default: no loan appears overdue until client hydrates
+                      const isOverdue  = nowSecs > 0 && nowSecs > Number(loan.dueTime) && loan.status === "Active";
                       return (
                         <tr key={loan.id} className="hover:bg-gray-800/40 transition-colors">
                           <td className="px-4 py-3 text-gray-400">#{loan.loanId.toString()}</td>
@@ -777,9 +790,19 @@ export default function MarketPage() {
             )}
           </div>
           <button onClick={handlePost}
-            disabled={!address || isPending || isConfirming || !amount || !validDays || (postType === "lend" && (!apr || !duration))}
+            disabled={!mounted || !address || isPending || isConfirming || !amount || !validDays || (postType === "lend" && (!apr || !duration))}
             className="w-full bg-green-500 hover:bg-green-400 disabled:opacity-40 text-black font-bold py-2.5 rounded-lg transition-colors">
-            {!address ? "Connect Wallet" : isPending ? "Confirm in wallet..." : isConfirming ? "Processing..." : postType === "borrow" ? "Post Borrow Request" : `Post Lend Offer (${amount || "0"} tCTC locked)`}
+            {!mounted
+              ? "Loading..."
+              : !address
+              ? "Connect Wallet"
+              : isPending
+              ? "Confirm in wallet..."
+              : isConfirming
+              ? "Processing..."
+              : postType === "borrow"
+              ? "Post Borrow Request"
+              : `Post Lend Offer (${amount || "0"} tCTC locked)`}
           </button>
         </div>
       </div>

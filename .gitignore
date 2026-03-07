@@ -3,28 +3,29 @@ node_modules/
 frontend/node_modules/
 ponder/node_modules/
 
-# Next.js
+# Build outputs
 frontend/.next/
 frontend/out/
+frontend/build/
 
-# Environment variables 
+# Environment variables
 .env
 .env.local
-frontend/.env
-frontend/.env.local
-ponder/.env
+**/.env
+**/.env.local
+**/.env.*.local
 
-# Build
-frontend/build/
+# Keep example env files
+!**/.env.example
 
 # Logs
 *.log
 npm-debug.log*
 
-# OS
+# OS files
 .DS_Store
 Thumbs.db
 
-# Ponder database
+# Ponder
 ponder/ponder.db
 ponder/.ponder/
