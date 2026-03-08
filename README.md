@@ -139,7 +139,6 @@ Scores range from **0 to 1000**, composed of two components:
 - **Real World Credit Minting** — issuers can record external loan history on-chain
 - **Lender Protection** — offer invalidation and pending refund system
 - **Live Leaderboard** — ranked credit scores across all borrowers
-- **Auto-Polling** — frontend detects refunds and loan status changes every 5s
 - **Credit Records Explorer** — public view of all minted real-world records
 
 ---
